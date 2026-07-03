@@ -11,4 +11,5 @@ Desktop-приложение для план-факт учета личных ф
 - TanStack Table
 - Recharts
 
-
+Внешний вид
+<img width="1277" height="844" alt="image" src="https://github.com/user-attachments/assets/cfae0ac9-7a0c-47fc-baff-2da3d7fc9d9c" />
