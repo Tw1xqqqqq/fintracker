@@ -3,6 +3,6 @@
   "identifier": "default",
   "description": "Default desktop permissions for FinTracker",
   "windows": ["main"],
-  "permissions": ["sql:default"]
+  "permissions": ["sql:default", "sql:allow-load", "sql:allow-execute", "sql:allow-select"]
 }
 
