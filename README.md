@@ -17,4 +17,4 @@ Desktop-приложение для план-факт учета личных ф
   
 
 <img width="1279" height="838" alt="image" src="https://github.com/user-attachments/assets/d51e482f-c7a9-496e-a257-1be73772913a" />
-
+<img width="1279" height="831" alt="image" src="https://github.com/user-attachments/assets/a852d3d6-cc3d-4f1e-b66e-f775aac9daa4" />
