@@ -16,7 +16,6 @@ import {
   listAccounts,
   listCategories,
   listOperations,
-  seedIfEmpty,
   upsertOperation
 } from "../lib/repository";
 import { OperationForm } from "./OperationForm";
@@ -56,7 +55,6 @@ export function OperationsJournal() {
     setLoading(true);
     setError(null);
     try {
-      await seedIfEmpty();
       const [ops, accs, cats] = await Promise.all([
         listOperations(),
         listAccounts(),

@@ -7,8 +7,11 @@ import {
   Settings
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import type { SetupData } from "./Onboarding";
+import type { AppState } from "../App";
 import { OperationsJournal } from "./OperationsJournal";
+import { CategoriesManager } from "./CategoriesManager";
+import { AccountsManager } from "./AccountsManager";
+import { AccountingSettings } from "./AccountingSettings";
 
 type SectionId = "dashboard" | "operations" | "plan" | "settings";
 
@@ -26,19 +29,22 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 function formatDate(iso: string) {
+  if (!iso) return "—";
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return "—";
   return new Intl.DateTimeFormat("ru-RU", {
     day: "numeric",
     month: "long",
     year: "numeric"
-  }).format(new Date(iso));
+  }).format(parsed);
 }
 
 type AppShellProps = {
-  setup: SetupData;
-  onReset: () => void;
+  appState: AppState;
+  onChanged: () => void;
 };
 
-export function AppShell({ setup, onReset }: AppShellProps) {
+export function AppShell({ appState, onChanged }: AppShellProps) {
   const [active, setActive] = useState<SectionId>("dashboard");
   const current = NAV_ITEMS.find((item) => item.id === active) ?? NAV_ITEMS[0];
 
@@ -68,8 +74,8 @@ export function AppShell({ setup, onReset }: AppShellProps) {
         </nav>
 
         <div className="sidebar-footer">
-          <span className="sidebar-account">{setup.accountName}</span>
-          <span className="sidebar-since">учёт с {formatDate(setup.startDate)}</span>
+          <span className="sidebar-account">{appState.accountName}</span>
+          <span className="sidebar-since">учёт с {formatDate(appState.startDate)}</span>
         </div>
       </aside>
 
@@ -79,7 +85,7 @@ export function AppShell({ setup, onReset }: AppShellProps) {
         </header>
 
         <div className="content-body">
-          <Section id={active} setup={setup} onReset={onReset} />
+          <Section id={active} appState={appState} onChanged={onChanged} />
         </div>
       </main>
     </div>
@@ -88,32 +94,21 @@ export function AppShell({ setup, onReset }: AppShellProps) {
 
 type SectionProps = {
   id: SectionId;
-  setup: SetupData;
-  onReset: () => void;
+  appState: AppState;
+  onChanged: () => void;
 };
 
-function Section({ id, setup, onReset }: SectionProps) {
+function Section({ id, onChanged }: SectionProps) {
   if (id === "operations") {
     return <OperationsJournal />;
   }
 
   if (id === "settings") {
     return (
-      <div className="panel">
-        <p className="panel-lead">Параметры учёта.</p>
-        <dl className="settings-list">
-          <div>
-            <dt>Счёт</dt>
-            <dd>{setup.accountName}</dd>
-          </div>
-          <div>
-            <dt>Начало учёта</dt>
-            <dd>{formatDate(setup.startDate)}</dd>
-          </div>
-        </dl>
-        <button className="intro-secondary" type="button" onClick={onReset}>
-          Изменить данные
-        </button>
+      <div className="settings-stack">
+        <AccountingSettings onChanged={onChanged} />
+        <AccountsManager />
+        <CategoriesManager />
       </div>
     );
   }

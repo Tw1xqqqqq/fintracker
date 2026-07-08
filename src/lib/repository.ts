@@ -1,9 +1,5 @@
 import type { Account, Category, Operation } from "../types";
-import {
-  accounts as seedAccounts,
-  categories as seedCategories,
-  operations as seedOperations
-} from "../data/seed";
+import { categories as seedCategories } from "../data/seed";
 import { openDatabase } from "./db";
 
 type OperationRow = {
@@ -74,22 +70,61 @@ export async function deleteOperation(id: string): Promise<void> {
   await db.execute("DELETE FROM operations WHERE id = $1", [id]);
 }
 
-// Загружает демо-данные из seed при первом запуске (пустая БД).
-export async function seedIfEmpty(): Promise<void> {
+export async function upsertCategory(category: Category): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    "INSERT OR REPLACE INTO categories (id, name, type, color) VALUES ($1, $2, $3, $4)",
+    [category.id, category.name, category.type, category.color]
+  );
+}
+
+export async function deleteCategory(id: string): Promise<void> {
+  const db = await openDatabase();
+  await db.execute("DELETE FROM categories WHERE id = $1", [id]);
+}
+
+// Сколько операций ссылается на статью — чтобы не удалить используемую.
+export async function countOperationsForCategory(id: string): Promise<number> {
   const db = await openDatabase();
   const [{ count }] = await db.select<{ count: number }[]>(
-    "SELECT COUNT(*) as count FROM accounts"
+    "SELECT COUNT(*) as count FROM operations WHERE category_id = $1",
+    [id]
+  );
+  return count;
+}
+
+export async function upsertAccount(account: Account): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    "INSERT OR REPLACE INTO accounts (id, name, type, balance) VALUES ($1, $2, $3, $4)",
+    [account.id, account.name, account.type, account.balance]
+  );
+}
+
+export async function deleteAccount(id: string): Promise<void> {
+  const db = await openDatabase();
+  await db.execute("DELETE FROM accounts WHERE id = $1", [id]);
+}
+
+// Сколько операций ссылается на счёт — чтобы не удалить используемый.
+export async function countOperationsForAccount(id: string): Promise<number> {
+  const db = await openDatabase();
+  const [{ count }] = await db.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM operations WHERE account_id = $1",
+    [id]
+  );
+  return count;
+}
+
+// Подсевает набор статей по умолчанию, если справочник статей пуст
+// (вызывается при онбординге, чтобы сразу можно было заносить операции).
+export async function seedDefaultCategories(): Promise<void> {
+  const db = await openDatabase();
+  const [{ count }] = await db.select<{ count: number }[]>(
+    "SELECT COUNT(*) as count FROM categories"
   );
   if (count > 0) return;
 
-  for (const account of seedAccounts) {
-    await db.execute("INSERT INTO accounts (id, name, type, balance) VALUES ($1, $2, $3, $4)", [
-      account.id,
-      account.name,
-      account.type,
-      account.balance
-    ]);
-  }
   for (const category of seedCategories) {
     await db.execute("INSERT INTO categories (id, name, type, color) VALUES ($1, $2, $3, $4)", [
       category.id,
@@ -98,7 +133,18 @@ export async function seedIfEmpty(): Promise<void> {
       category.color
     ]);
   }
-  for (const operation of seedOperations) {
-    await upsertOperation(operation);
-  }
+}
+
+export async function getSetting(key: string): Promise<string | null> {
+  const db = await openDatabase();
+  const rows = await db.select<{ value: string }[]>(
+    "SELECT value FROM settings WHERE key = $1",
+    [key]
+  );
+  return rows.length > 0 ? rows[0].value : null;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const db = await openDatabase();
+  await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ($1, $2)", [key, value]);
 }

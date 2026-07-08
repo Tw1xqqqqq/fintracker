@@ -1,38 +1,92 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Onboarding } from "./components/Onboarding";
 import { AppShell } from "./components/AppShell";
 import type { SetupData } from "./components/Onboarding";
+import {
+  getSetting,
+  listAccounts,
+  seedDefaultCategories,
+  setSetting,
+  upsertAccount
+} from "./lib/repository";
 
-const STORAGE_KEY = "fintracker.setup";
+export type AppState = {
+  accountName: string;
+  startDate: string;
+};
 
-function readSetup(): SetupData | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as SetupData;
-    if (!data.accountName || !data.startDate) return null;
-    return data;
-  } catch {
-    return null;
-  }
+type Status =
+  | { kind: "loading" }
+  | { kind: "onboarding" }
+  | { kind: "ready"; state: AppState }
+  | { kind: "error"; message: string };
+
+function newId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `acc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export function App() {
-  const [setup, setSetup] = useState<SetupData | null>(() => readSetup());
+  const [status, setStatus] = useState<Status>({ kind: "loading" });
 
-  const handleComplete = (data: SetupData) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    setSetup(data);
+  async function load() {
+    try {
+      const accounts = await listAccounts();
+      if (accounts.length === 0) {
+        setStatus({ kind: "onboarding" });
+        return;
+      }
+      const startDate = (await getSetting("startDate")) ?? "";
+      const primaryId = await getSetting("primaryAccountId");
+      const primary = accounts.find((account) => account.id === primaryId) ?? accounts[0];
+      setStatus({ kind: "ready", state: { accountName: primary.name, startDate } });
+    } catch (err) {
+      setStatus({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const handleComplete = async (data: SetupData) => {
+    const id = newId();
+    await upsertAccount({ id, name: data.accountName, type: "card", balance: 0 });
+    await setSetting("primaryAccountId", id);
+    await setSetting("startDate", data.startDate);
+    await seedDefaultCategories();
+    await load();
   };
 
-  const handleReset = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setSetup(null);
-  };
+  if (status.kind === "loading") {
+    return (
+      <main className="intro-screen">
+        <section className="intro-card">
+          <p className="intro-lead">Загрузка…</p>
+        </section>
+      </main>
+    );
+  }
 
-  if (!setup) {
+  if (status.kind === "error") {
+    return (
+      <main className="intro-screen">
+        <section className="intro-card">
+          <h1>Не удалось открыть базу данных</h1>
+          <p className="error-text">{status.message}</p>
+          <p className="intro-lead">
+            Приложение работает с локальной базой (SQLite) и запускается через
+            <code> npm run tauri dev</code>.
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (status.kind === "onboarding") {
     return <Onboarding onComplete={handleComplete} />;
   }
 
-  return <AppShell setup={setup} onReset={handleReset} />;
+  return <AppShell appState={status.state} onChanged={load} />;
 }
