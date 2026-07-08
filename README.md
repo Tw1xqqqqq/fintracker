@@ -11,10 +11,15 @@ Desktop-приложение для план-факт учета личных ф
 - TanStack Table
 - Recharts
 
-Что сделано на 07.07.2026
-- Перенесено создание схемы из ручного CREATE TABLE в официальные миграции в lib.rs
-- Заменили одноэкранное приветствие на страницу с сайдбаром: Дашборд, Операции, План, Настройки
+Что сделали  08.07.2026
+- Сделан журнал операций: таблица с колонками дата / тип / статья / счёт / сумма / статус
+- Добавили CRUD статей доходов/расходов и счетов
+- Добавили редактируемую панель «Параметры учёта»
   
 
-<img width="1279" height="838" alt="image" src="https://github.com/user-attachments/assets/d51e482f-c7a9-496e-a257-1be73772913a" />
-<img width="1279" height="831" alt="image" src="https://github.com/user-attachments/assets/a852d3d6-cc3d-4f1e-b66e-f775aac9daa4" />
+<img width="1036" height="830" alt="image" src="https://github.com/user-attachments/assets/c9347d15-1e97-4bdb-b13c-c3a977a1feca" />
+<img width="642" height="599" alt="image" src="https://github.com/user-attachments/assets/1f4128ca-867f-4ec3-bbb9-5cb594015975" />
+<img width="1679" height="1012" alt="image" src="https://github.com/user-attachments/assets/48690535-e8e3-4ef6-adbd-eeb7cf4c64a9" />
+
+
+
