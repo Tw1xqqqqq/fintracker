@@ -11,15 +11,16 @@ Desktop-приложение для план-факт учета личных ф
 - TanStack Table
 - Recharts
 
-Что сделали  08.07.2026
-- Сделан журнал операций: таблица с колонками дата / тип / статья / счёт / сумма / статус
-- Добавили CRUD статей доходов/расходов и счетов
-- Добавили редактируемую панель «Параметры учёта»
+Что сделали  09.07.2026
+- Сделана генерация недель финансового года из даты старта, наполнение week_plans.
+- Написана функция сквозного пересчёта цепочки баланса по неделям (расширен существующий balanceSeries в finance.ts).
+- Сделали определение кассовых разрывов (недели с отрицательным балансом).
+- Покрыли расчёты 2–3 юнит-тестами на ключевые случаи.
   
 
-<img width="1036" height="830" alt="image" src="https://github.com/user-attachments/assets/c9347d15-1e97-4bdb-b13c-c3a977a1feca" />
 <img width="642" height="599" alt="image" src="https://github.com/user-attachments/assets/1f4128ca-867f-4ec3-bbb9-5cb594015975" />
-<img width="1679" height="1012" alt="image" src="https://github.com/user-attachments/assets/48690535-e8e3-4ef6-adbd-eeb7cf4c64a9" />
+<img width="683" height="415" alt="image" src="https://github.com/user-attachments/assets/723fb0af-b50d-49af-8a16-051b84d31bef" />
+
 
 
 
