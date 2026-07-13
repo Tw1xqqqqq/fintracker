@@ -9,6 +9,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { AppState } from "../App";
 import { OperationsJournal } from "./OperationsJournal";
+import { Dashboard } from "./Dashboard";
 import { CategoriesManager } from "./CategoriesManager";
 import { AccountsManager } from "./AccountsManager";
 import { AccountingSettings } from "./AccountingSettings";
@@ -99,6 +100,10 @@ type SectionProps = {
 };
 
 function Section({ id, onChanged }: SectionProps) {
+  if (id === "dashboard") {
+    return <Dashboard />;
+  }
+
   if (id === "operations") {
     return <OperationsJournal />;
   }
@@ -113,15 +118,10 @@ function Section({ id, onChanged }: SectionProps) {
     );
   }
 
-  const placeholders: Record<Exclude<SectionId, "settings">, string> = {
-    dashboard: "Баланс по периодам и кассовые разрывы появятся здесь.",
-    operations: "Журнал операций план/факт появится здесь.",
-    plan: "Годовой план доходов и расходов по неделям появится здесь."
-  };
-
+  // Остаётся только раздел «План» — остальные обработаны выше.
   return (
     <div className="panel panel--empty">
-      <p className="panel-lead">{placeholders[id]}</p>
+      <p className="panel-lead">Годовой план доходов и расходов по неделям появится здесь.</p>
       <span className="panel-badge">В разработке</span>
     </div>
   );

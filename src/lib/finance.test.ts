@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { Operation, WeekPlan } from "../types";
-import { aggregateWeeks, balanceSeries, generateWeeks } from "./finance";
+import type { Account, Operation, WeekPlan } from "../types";
+import { aggregateWeeks, balanceSeries, computeWeeklyBalance, generateWeeks } from "./finance";
 
 let opSeq = 0;
 function op(
@@ -145,5 +145,46 @@ describe("aggregateWeeks", () => {
     const series = balanceSeries(0, plans);
     expect(series[0].balance).toBe(100); // факт-доход
     expect(series[1].balance).toBe(60); // 100 − 40 план-расход, перенос остатка
+  });
+});
+
+describe("computeWeeklyBalance", () => {
+  const accounts: Account[] = [
+    { id: "a", name: "Карта", type: "card", balance: 1000 },
+    { id: "b", name: "Наличные", type: "cash", balance: 500 }
+  ];
+
+  it("стартовый баланс = сумма балансов счетов", () => {
+    const result = computeWeeklyBalance(null, accounts, []);
+    expect(result.initialBalance).toBe(1500);
+  });
+
+  it("без даты старта недели не строятся", () => {
+    const result = computeWeeklyBalance(null, accounts, [op("2026-07-08", "expense", "actual", 200)]);
+    expect(result.weeks).toEqual([]);
+  });
+
+  it("считает цепочку баланса от суммы счетов", () => {
+    const result = computeWeeklyBalance("2026-07-08", accounts, [
+      op("2026-07-08", "expense", "actual", 200)
+    ]);
+    expect(result.weeks[0].openingBalance).toBe(1500);
+    expect(result.weeks[0].balance).toBe(1300); // 1500 − 200
+  });
+
+  it("обрезает хвост пустых недель до минимума при активности только в начале", () => {
+    // старт в начале года -> 53 недели, но активна только неделя 0
+    const result = computeWeeklyBalance("2026-01-01", accounts, [
+      op("2026-01-01", "expense", "actual", 200)
+    ]);
+    expect(result.weeks).toHaveLength(4); // минимум для контекста, а не 53
+  });
+
+  it("растягивает диапазон до последней активной недели", () => {
+    // операция в неделе с индексом 10 (2026-01-01 + 70 дней = 2026-03-12)
+    const result = computeWeeklyBalance("2026-01-01", accounts, [
+      op("2026-03-12", "income", "planned", 500)
+    ]);
+    expect(result.weeks).toHaveLength(11); // недели 0..10 включительно
   });
 });

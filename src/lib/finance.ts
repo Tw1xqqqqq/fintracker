@@ -174,3 +174,54 @@ export function aggregateWeeks(operations: Operation[], weeks: Week[]): WeekPlan
   return plans;
 }
 
+export interface WeeklyBalanceResult {
+  startDate: string | null;
+  initialBalance: number; // стартовый баланс = сумма балансов счетов
+  accounts: Account[];
+  operations: Operation[];
+  weeks: WeekBalance[];
+}
+
+export function sumAccountBalances(accounts: Account[]): number {
+  return accounts.reduce((total, account) => total + account.balance, 0);
+}
+
+const MIN_CHART_WEEKS = 4; // минимум недель для контекста, даже если данных нет
+
+function hasActivity(plan: WeekPlan): boolean {
+  return (
+    plan.incomePlan !== 0 ||
+    plan.expensePlan !== 0 ||
+    plan.incomeActual !== 0 ||
+    plan.expenseActual !== 0
+  );
+}
+
+// Собирает недельную цепочку баланса из данных (без обращения к БД).
+// Стартовый баланс = сумма балансов счетов; далее generateWeeks →
+// aggregateWeeks → balanceSeries. Длинный хвост пустых недель после
+// последней активной обрезается (оставляем минимум для контекста),
+// чтобы не показывать десятки будущих недель без данных.
+// Без даты старта недели не строятся.
+export function computeWeeklyBalance(
+  startDate: string | null,
+  accounts: Account[],
+  operations: Operation[]
+): WeeklyBalanceResult {
+  const initialBalance = sumAccountBalances(accounts);
+  if (!startDate) {
+    return { startDate, initialBalance, accounts, operations, weeks: [] };
+  }
+
+  const plans = aggregateWeeks(operations, generateWeeks(startDate));
+
+  let lastActive = -1;
+  plans.forEach((plan, index) => {
+    if (hasActivity(plan)) lastActive = index;
+  });
+  const count = Math.min(plans.length, Math.max(lastActive + 1, MIN_CHART_WEEKS));
+
+  const weeks = balanceSeries(initialBalance, plans.slice(0, count));
+  return { startDate, initialBalance, accounts, operations, weeks };
+}
+
