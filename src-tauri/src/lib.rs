@@ -55,6 +55,38 @@ fn migrations() -> Vec<Migration> {
             );
         ",
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 3,
+        description: "create_week_category_plans",
+        sql: "
+            CREATE TABLE IF NOT EXISTS week_category_plans (
+                week_start  TEXT NOT NULL,
+                category_id TEXT NOT NULL REFERENCES categories(id),
+                amount      REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY (week_start, category_id)
+            );
+        ",
+        kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 4,
+        description: "create_recurring_rules",
+        sql: "
+            CREATE TABLE IF NOT EXISTS recurring_rules (
+                id            TEXT PRIMARY KEY,
+                type          TEXT NOT NULL,
+                category_id   TEXT NOT NULL REFERENCES categories(id),
+                account_id    TEXT NOT NULL REFERENCES accounts(id),
+                amount        REAL NOT NULL,
+                interval_days INTEGER NOT NULL,
+                start_date    TEXT NOT NULL,
+                end_date      TEXT,
+                description   TEXT NOT NULL DEFAULT ''
+            );
+            ALTER TABLE operations ADD COLUMN recurring_id TEXT;
+        ",
+        kind: MigrationKind::Up,
     }]
 }
 

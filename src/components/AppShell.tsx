@@ -10,9 +10,11 @@ import type { LucideIcon } from "lucide-react";
 import type { AppState } from "../App";
 import { OperationsJournal } from "./OperationsJournal";
 import { Dashboard } from "./Dashboard";
+import { Plan } from "./Plan";
 import { CategoriesManager } from "./CategoriesManager";
 import { AccountsManager } from "./AccountsManager";
 import { AccountingSettings } from "./AccountingSettings";
+import { RecurringManager } from "./RecurringManager";
 
 type SectionId = "dashboard" | "operations" | "plan" | "settings";
 
@@ -108,21 +110,20 @@ function Section({ id, onChanged }: SectionProps) {
     return <OperationsJournal />;
   }
 
+  if (id === "plan") {
+    return <Plan />;
+  }
+
   if (id === "settings") {
     return (
       <div className="settings-stack">
         <AccountingSettings onChanged={onChanged} />
         <AccountsManager />
         <CategoriesManager />
+        <RecurringManager />
       </div>
     );
   }
 
-  // Остаётся только раздел «План» — остальные обработаны выше.
-  return (
-    <div className="panel panel--empty">
-      <p className="panel-lead">Годовой план доходов и расходов по неделям появится здесь.</p>
-      <span className="panel-badge">В разработке</span>
-    </div>
-  );
+  return null;
 }

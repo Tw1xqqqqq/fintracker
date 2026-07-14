@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { Account, Operation, WeekPlan } from "../types";
-import { aggregateWeeks, balanceSeries, computeWeeklyBalance, generateWeeks } from "./finance";
+import type { Account, Category, CategoryPlan, Operation, WeekPlan } from "../types";
+import {
+  aggregateWeeks,
+  balanceSeries,
+  computeWeeklyBalance,
+  generateWeeks,
+  recurringOccurrences,
+  suggestWeeklyAverages
+} from "./finance";
 
 let opSeq = 0;
 function op(
@@ -186,5 +193,57 @@ describe("computeWeeklyBalance", () => {
       op("2026-03-12", "income", "planned", 500)
     ]);
     expect(result.weeks).toHaveLength(11); // недели 0..10 включительно
+  });
+
+  it("подхватывает план из сетки статей и пересчитывает баланс", () => {
+    const cats: Category[] = [{ id: "food", name: "Еда", type: "expense", color: "#000" }];
+    const catPlans: CategoryPlan[] = [
+      { weekStart: "2026-07-08", categoryId: "food", amount: 300 }
+    ];
+    const result = computeWeeklyBalance("2026-07-08", accounts, [], cats, catPlans);
+    expect(result.weeks[0].expensePlan).toBe(300);
+    expect(result.weeks[0].balance).toBe(1200); // 1500 − 300 (план расхода, факта нет)
+  });
+});
+
+describe("suggestWeeklyAverages", () => {
+  it("делит факт прошлого года по статье на 52", () => {
+    const averages = suggestWeeklyAverages(
+      [
+        op("2025-02-01", "expense", "actual", 5200), // прошлый год
+        op("2025-06-01", "expense", "actual", 5200), // та же статья 'c'
+        op("2026-01-01", "expense", "actual", 9999) // текущий год — игнор
+      ],
+      2026
+    );
+    expect(averages.get("c")).toBe(200); // (5200+5200)/52
+  });
+
+  it("игнорирует план и переводы", () => {
+    const averages = suggestWeeklyAverages(
+      [
+        op("2025-03-01", "expense", "planned", 5200),
+        op("2025-03-01", "transfer", "actual", 5200)
+      ],
+      2026
+    );
+    expect(averages.size).toBe(0);
+  });
+});
+
+describe("recurringOccurrences", () => {
+  it("повтор каждые 30 дней до горизонта", () => {
+    const dates = recurringOccurrences("2026-01-01", 30, null, "2026-03-15");
+    expect(dates).toEqual(["2026-01-01", "2026-01-31", "2026-03-02"]);
+  });
+
+  it("останавливается на endDate правила, если он раньше горизонта", () => {
+    const dates = recurringOccurrences("2026-01-01", 7, "2026-01-20", "2026-12-31");
+    expect(dates).toEqual(["2026-01-01", "2026-01-08", "2026-01-15"]);
+  });
+
+  it("возвращает пустой список при некорректных данных", () => {
+    expect(recurringOccurrences("2026-01-01", 0, null, "2026-12-31")).toEqual([]);
+    expect(recurringOccurrences("2026-05-01", 30, null, "2026-01-01")).toEqual([]);
   });
 });

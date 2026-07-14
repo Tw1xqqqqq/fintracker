@@ -1,4 +1,4 @@
-import type { Account, Category, Operation, WeekPlan } from "../types";
+import type { Account, Category, CategoryPlan, Operation, WeekPlan } from "../types";
 
 export function formatMoney(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
@@ -197,16 +197,37 @@ function hasActivity(plan: WeekPlan): boolean {
   );
 }
 
+// Добавляет к недельному плану суммы из сетки статей (week_category_plans):
+// доходные статьи -> incomePlan, расходные -> expensePlan.
+function addCategoryPlans(
+  plans: WeekPlan[],
+  categories: Category[],
+  categoryPlans: CategoryPlan[]
+): void {
+  if (categoryPlans.length === 0) return;
+  const typeById = new Map(categories.map((category) => [category.id, category.type]));
+  const byWeek = new Map(plans.map((plan) => [plan.weekStart, plan]));
+  for (const categoryPlan of categoryPlans) {
+    const type = typeById.get(categoryPlan.categoryId);
+    const target = byWeek.get(categoryPlan.weekStart);
+    if (!type || !target) continue;
+    if (type === "income") target.incomePlan += categoryPlan.amount;
+    else target.expensePlan += categoryPlan.amount;
+  }
+}
+
 // Собирает недельную цепочку баланса из данных (без обращения к БД).
 // Стартовый баланс = сумма балансов счетов; далее generateWeeks →
-// aggregateWeeks → balanceSeries. Длинный хвост пустых недель после
-// последней активной обрезается (оставляем минимум для контекста),
-// чтобы не показывать десятки будущих недель без данных.
-// Без даты старта недели не строятся.
+// aggregateWeeks → balanceSeries. План недели = плановые операции +
+// суммы из сетки статей (categoryPlans); факт — из фактических операций.
+// Длинный хвост пустых недель после последней активной обрезается
+// (оставляем минимум для контекста). Без даты старта недели не строятся.
 export function computeWeeklyBalance(
   startDate: string | null,
   accounts: Account[],
-  operations: Operation[]
+  operations: Operation[],
+  categories: Category[] = [],
+  categoryPlans: CategoryPlan[] = []
 ): WeeklyBalanceResult {
   const initialBalance = sumAccountBalances(accounts);
   if (!startDate) {
@@ -214,6 +235,7 @@ export function computeWeeklyBalance(
   }
 
   const plans = aggregateWeeks(operations, generateWeeks(startDate));
+  addCategoryPlans(plans, categories, categoryPlans);
 
   let lastActive = -1;
   plans.forEach((plan, index) => {
@@ -223,5 +245,61 @@ export function computeWeeklyBalance(
 
   const weeks = balanceSeries(initialBalance, plans.slice(0, count));
   return { startDate, initialBalance, accounts, operations, weeks };
+}
+
+const WEEKS_PER_YEAR = 52;
+
+// Средняя недельная сумма по каждой статье на основе факта прошлого
+// (относительно года плана) календарного года: сумма факта за прошлый
+// год / 52. Учитываются только фактические операции, переводы — нет.
+export function suggestWeeklyAverages(
+  operations: Operation[],
+  planYear: number
+): Map<string, number> {
+  const prevYear = planYear - 1;
+  const from = `${prevYear}-01-01`;
+  const to = `${prevYear}-12-31`;
+
+  const totals = new Map<string, number>();
+  for (const operation of operations) {
+    if (operation.status !== "actual" || operation.type === "transfer") continue;
+    if (operation.date < from || operation.date > to) continue;
+    totals.set(operation.categoryId, (totals.get(operation.categoryId) ?? 0) + operation.amount);
+  }
+
+  const averages = new Map<string, number>();
+  totals.forEach((total, categoryId) => {
+    averages.set(categoryId, Math.round(total / WEEKS_PER_YEAR));
+  });
+  return averages;
+}
+
+const MAX_OCCURRENCES = 1000; // предохранитель от зацикливания
+
+// Даты повторений правила: от startDate с шагом intervalDays, пока не позже
+// горизонта (horizonEnd) и не позже endDate правила (если задан).
+export function recurringOccurrences(
+  startDate: string,
+  intervalDays: number,
+  endDate: string | null,
+  horizonEnd: string
+): string[] {
+  const start = parseIsoDate(startDate);
+  const horizon = parseIsoDate(horizonEnd);
+  if (!start || !horizon || intervalDays < 1) return [];
+
+  const ruleEnd = endDate ? parseIsoDate(endDate) : null;
+  const limit = ruleEnd && ruleEnd.getTime() < horizon.getTime() ? ruleEnd : horizon;
+  if (limit.getTime() < start.getTime()) return [];
+
+  const dates: string[] = [];
+  let cursor = start;
+  let index = 0;
+  while (cursor.getTime() <= limit.getTime() && index < MAX_OCCURRENCES) {
+    dates.push(toIsoDate(cursor));
+    cursor = addDays(cursor, intervalDays);
+    index += 1;
+  }
+  return dates;
 }
 

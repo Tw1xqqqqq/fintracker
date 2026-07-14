@@ -35,3 +35,21 @@ export interface WeekPlan {
   expenseActual: number;
 }
 
+export interface CategoryPlan {
+  weekStart: string;
+  categoryId: string;
+  amount: number;
+}
+
+export interface RecurringRule {
+  id: string;
+  type: Exclude<OperationType, "transfer">;
+  categoryId: string;
+  accountId: string;
+  amount: number;
+  intervalDays: number; // повтор каждые N дней
+  startDate: string;
+  endDate: string | null; // null = без конца
+  description: string;
+}
+
