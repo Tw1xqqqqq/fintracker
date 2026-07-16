@@ -29,39 +29,56 @@ export function OperationForm({
   onDelete,
   onCancel
 }: OperationFormProps) {
+  const defaultSourceAccountId = initial?.sourceAccountId ?? initial?.accountId ?? accounts[0]?.id ?? "";
   const [date, setDate] = useState(initial?.date ?? todayIso());
   const [type, setType] = useState<OperationType>(initial?.type ?? "expense");
   const [status, setStatus] = useState<OperationStatus>(initial?.status ?? "actual");
   const [accountId, setAccountId] = useState(initial?.accountId ?? accounts[0]?.id ?? "");
+  const [sourceAccountId, setSourceAccountId] = useState(
+    defaultSourceAccountId
+  );
+  const [targetAccountId, setTargetAccountId] = useState(
+    initial?.targetAccountId ?? accounts.find((account) => account.id !== defaultSourceAccountId)?.id ?? ""
+  );
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
   const [description, setDescription] = useState(initial?.description ?? "");
 
   const availableCategories = useMemo(
-    () => (type === "transfer" ? categories : categories.filter((c) => c.type === type)),
+    () => (type === "transfer" ? [] : categories.filter((c) => c.type === type)),
     [categories, type]
   );
 
   // Категория, выбранная сейчас, должна существовать в отфильтрованном списке.
-  const effectiveCategoryId =
-    availableCategories.some((c) => c.id === categoryId) ? categoryId : availableCategories[0]?.id ?? "";
+  const effectiveCategoryId = availableCategories.some((c) => c.id === categoryId)
+    ? categoryId
+    : availableCategories[0]?.id ?? null;
 
   const numericAmount = Number(amount);
+  const isTransferValid =
+    sourceAccountId !== "" && targetAccountId !== "" && sourceAccountId !== targetAccountId;
   const isValid =
-    date !== "" && accountId !== "" && effectiveCategoryId !== "" && numericAmount > 0;
+    date !== "" &&
+    numericAmount > 0 &&
+    (type === "transfer" ? isTransferValid : accountId !== "" && effectiveCategoryId !== null);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isValid) return;
+    const id = initial?.id ?? newId();
+    const transferId = initial?.transferId ?? (type === "transfer" ? id : null);
     onSave({
-      id: initial?.id ?? newId(),
+      id,
       date,
       type,
       status,
-      categoryId: effectiveCategoryId,
-      accountId,
+      categoryId: type === "transfer" ? null : effectiveCategoryId,
+      accountId: type === "transfer" ? sourceAccountId : accountId,
       amount: numericAmount,
-      description: description.trim()
+      description: description.trim(),
+      sourceAccountId: type === "transfer" ? sourceAccountId : null,
+      targetAccountId: type === "transfer" ? targetAccountId : null,
+      transferId
     });
   };
 
@@ -91,31 +108,58 @@ export function OperationForm({
               </select>
             </label>
 
-            <label className="field">
-              <span>Статья</span>
-              <select
-                value={effectiveCategoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                disabled={availableCategories.length === 0}
-              >
-                {availableCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {type === "transfer" ? (
+              <>
+                <label className="field">
+                  <span>Счёт-источник</span>
+                  <select value={sourceAccountId} onChange={(e) => setSourceAccountId(e.target.value)}>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Счёт-получатель</span>
+                  <select value={targetAccountId} onChange={(e) => setTargetAccountId(e.target.value)}>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id} disabled={account.id === sourceAccountId}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            ) : (
+              <>
+                <label className="field">
+                  <span>Статья</span>
+                  <select
+                    value={effectiveCategoryId ?? ""}
+                    onChange={(e) => setCategoryId(e.target.value)}
+                    disabled={availableCategories.length === 0}
+                  >
+                    {availableCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-            <label className="field">
-              <span>Счёт</span>
-              <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <label className="field">
+                  <span>Счёт</span>
+                  <select value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
 
             <label className="field">
               <span>Сумма</span>

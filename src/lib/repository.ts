@@ -1,13 +1,12 @@
 import type {
   Account,
   Category,
-  CategoryPlan,
   Operation,
-  RecurringRule,
-  WeekPlan
+  Reconciliation,
+  RecurringRule
 } from "../types";
 import { categories as seedCategories } from "../data/seed";
-import { recurringOccurrences } from "./finance";
+import { recurringRuleOccurrences } from "./finance";
 import { openDatabase } from "./db";
 
 type OperationRow = {
@@ -15,10 +14,14 @@ type OperationRow = {
   date: string;
   type: Operation["type"];
   status: Operation["status"];
-  category_id: string;
+  category_id: string | null;
   account_id: string;
   amount: number;
   description: string;
+  recurring_id: string | null;
+  source_account_id: string | null;
+  target_account_id: string | null;
+  transfer_id: string | null;
 };
 
 function mapOperation(row: OperationRow): Operation {
@@ -30,7 +33,11 @@ function mapOperation(row: OperationRow): Operation {
     categoryId: row.category_id,
     accountId: row.account_id,
     amount: row.amount,
-    description: row.description
+    description: row.description,
+    recurringId: row.recurring_id,
+    sourceAccountId: row.source_account_id,
+    targetAccountId: row.target_account_id,
+    transferId: row.transfer_id
   };
 }
 
@@ -47,7 +54,8 @@ export async function listCategories(): Promise<Category[]> {
 export async function listOperations(): Promise<Operation[]> {
   const db = await openDatabase();
   const rows = await db.select<OperationRow[]>(
-    `SELECT id, date, type, status, category_id, account_id, amount, description
+    `SELECT id, date, type, status, category_id, account_id, amount, description,
+            recurring_id, source_account_id, target_account_id, transfer_id
        FROM operations
       ORDER BY date DESC`
   );
@@ -56,10 +64,51 @@ export async function listOperations(): Promise<Operation[]> {
 
 export async function upsertOperation(operation: Operation): Promise<void> {
   const db = await openDatabase();
+
+  if (operation.type === "transfer") {
+    const sourceAccountId = operation.sourceAccountId;
+    const targetAccountId = operation.targetAccountId;
+    if (!sourceAccountId || !targetAccountId || sourceAccountId === targetAccountId) {
+      throw new Error("Для перевода нужны два разных счёта.");
+    }
+    const transferId = operation.transferId || operation.id;
+    await db.execute("DELETE FROM operations WHERE transfer_id = $1 OR id = $2", [
+      transferId,
+      operation.id
+    ]);
+    await db.execute(
+      `INSERT INTO operations
+         (id, date, type, status, category_id, account_id, amount, description,
+          recurring_id, source_account_id, target_account_id, transfer_id)
+       VALUES
+         ($1,  $2, 'transfer', $3, NULL, $4,  $5, $6, NULL, $7, $8, $9),
+         ($10, $2, 'transfer', $3, NULL, $11, $5, $6, NULL, $7, $8, $9)`,
+      [
+        `${transferId}:out`,
+        operation.date,
+        operation.status,
+        sourceAccountId,
+        operation.amount,
+        operation.description,
+        sourceAccountId,
+        targetAccountId,
+        transferId,
+        `${transferId}:in`,
+        targetAccountId
+      ]
+    );
+    return;
+  }
+
+  if (!operation.categoryId) throw new Error("Для дохода или расхода нужна категория.");
+  if (operation.transferId) {
+    await db.execute("DELETE FROM operations WHERE transfer_id = $1", [operation.transferId]);
+  }
   await db.execute(
     `INSERT OR REPLACE INTO operations
-       (id, date, type, status, category_id, account_id, amount, description)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+       (id, date, type, status, category_id, account_id, amount, description,
+        recurring_id, source_account_id, target_account_id, transfer_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL, NULL, NULL)`,
     [
       operation.id,
       operation.date,
@@ -68,14 +117,24 @@ export async function upsertOperation(operation: Operation): Promise<void> {
       operation.categoryId,
       operation.accountId,
       operation.amount,
-      operation.description
+      operation.description,
+      operation.recurringId ?? null
     ]
   );
 }
 
 export async function deleteOperation(id: string): Promise<void> {
   const db = await openDatabase();
-  await db.execute("DELETE FROM operations WHERE id = $1", [id]);
+  const rows = await db.select<{ transfer_id: string | null }[]>(
+    "SELECT transfer_id FROM operations WHERE id = $1",
+    [id]
+  );
+  const transferId = rows[0]?.transfer_id;
+  if (transferId) {
+    await db.execute("DELETE FROM operations WHERE transfer_id = $1", [transferId]);
+  } else {
+    await db.execute("DELETE FROM operations WHERE id = $1", [id]);
+  }
 }
 
 export async function upsertCategory(category: Category): Promise<void> {
@@ -118,83 +177,12 @@ export async function deleteAccount(id: string): Promise<void> {
 export async function countOperationsForAccount(id: string): Promise<number> {
   const db = await openDatabase();
   const [{ count }] = await db.select<{ count: number }[]>(
-    "SELECT COUNT(*) as count FROM operations WHERE account_id = $1",
+    `SELECT COUNT(*) as count
+       FROM operations
+      WHERE account_id = $1 OR source_account_id = $1 OR target_account_id = $1`,
     [id]
   );
   return count;
-}
-
-type WeekPlanRow = {
-  week_start: string;
-  income_plan: number;
-  expense_plan: number;
-  income_actual: number;
-  expense_actual: number;
-};
-
-function mapWeekPlan(row: WeekPlanRow): WeekPlan {
-  return {
-    weekStart: row.week_start,
-    incomePlan: row.income_plan,
-    expensePlan: row.expense_plan,
-    incomeActual: row.income_actual,
-    expenseActual: row.expense_actual
-  };
-}
-
-// Недельный план хранится в таблице week_plans (план — ввод пользователя).
-// Факт при этом остаётся производным от операций, а не пишется сюда.
-export async function listWeekPlans(): Promise<WeekPlan[]> {
-  const db = await openDatabase();
-  const rows = await db.select<WeekPlanRow[]>(
-    `SELECT week_start, income_plan, expense_plan, income_actual, expense_actual
-       FROM week_plans
-      ORDER BY week_start`
-  );
-  return rows.map(mapWeekPlan);
-}
-
-export async function upsertWeekPlan(plan: WeekPlan): Promise<void> {
-  const db = await openDatabase();
-  await db.execute(
-    `INSERT OR REPLACE INTO week_plans
-       (week_start, income_plan, expense_plan, income_actual, expense_actual)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [plan.weekStart, plan.incomePlan, plan.expensePlan, plan.incomeActual, plan.expenseActual]
-  );
-}
-
-// План по статьям на неделю (для сетки планирования статья × неделя).
-export async function listCategoryPlans(): Promise<CategoryPlan[]> {
-  const db = await openDatabase();
-  const rows = await db.select<{ week_start: string; category_id: string; amount: number }[]>(
-    "SELECT week_start, category_id, amount FROM week_category_plans"
-  );
-  return rows.map((row) => ({
-    weekStart: row.week_start,
-    categoryId: row.category_id,
-    amount: row.amount
-  }));
-}
-
-// Пустую (0) сумму не храним — удаляем строку, чтобы таблица оставалась разреженной.
-export async function upsertCategoryPlan(
-  weekStart: string,
-  categoryId: string,
-  amount: number
-): Promise<void> {
-  const db = await openDatabase();
-  if (!amount) {
-    await db.execute(
-      "DELETE FROM week_category_plans WHERE week_start = $1 AND category_id = $2",
-      [weekStart, categoryId]
-    );
-    return;
-  }
-  await db.execute(
-    "INSERT OR REPLACE INTO week_category_plans (week_start, category_id, amount) VALUES ($1, $2, $3)",
-    [weekStart, categoryId, amount]
-  );
 }
 
 type RecurringRuleRow = {
@@ -203,9 +191,14 @@ type RecurringRuleRow = {
   category_id: string;
   account_id: string;
   amount: number;
+  recurrence_kind: RecurringRule["recurrenceKind"];
   interval_days: number;
+  interval_unit: "day" | "week" | "month" | "year" | null;
+  weekdays: string | null;
+  monthly_mode: "date" | "weekday" | null;
   start_date: string;
   end_date: string | null;
+  occurrence_count: number | null;
   description: string;
 };
 
@@ -216,9 +209,19 @@ function mapRecurringRule(row: RecurringRuleRow): RecurringRule {
     categoryId: row.category_id,
     accountId: row.account_id,
     amount: row.amount,
+    recurrenceKind: row.recurrence_kind,
     intervalDays: row.interval_days,
+    intervalUnit: row.interval_unit ?? "day",
+    weekdays: row.weekdays
+      ? row.weekdays
+          .split(",")
+          .map((value) => Number(value))
+          .filter((value) => value >= 1 && value <= 7)
+      : null,
+    monthlyMode: row.monthly_mode,
     startDate: row.start_date,
     endDate: row.end_date,
+    occurrenceCount: row.occurrence_count,
     description: row.description
   };
 }
@@ -226,8 +229,9 @@ function mapRecurringRule(row: RecurringRuleRow): RecurringRule {
 export async function listRecurringRules(): Promise<RecurringRule[]> {
   const db = await openDatabase();
   const rows = await db.select<RecurringRuleRow[]>(
-    `SELECT id, type, category_id, account_id, amount, interval_days,
-            start_date, end_date, description
+    `SELECT id, type, category_id, account_id, amount, recurrence_kind, interval_days,
+            interval_unit, weekdays, monthly_mode, start_date, end_date, occurrence_count,
+            description
        FROM recurring_rules
       ORDER BY start_date`
   );
@@ -238,17 +242,24 @@ export async function upsertRecurringRule(rule: RecurringRule): Promise<void> {
   const db = await openDatabase();
   await db.execute(
     `INSERT OR REPLACE INTO recurring_rules
-       (id, type, category_id, account_id, amount, interval_days, start_date, end_date, description)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       (id, type, category_id, account_id, amount, recurrence_kind, interval_days,
+        interval_unit, weekdays, monthly_mode, start_date, end_date, occurrence_count,
+        description)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
     [
       rule.id,
       rule.type,
       rule.categoryId,
       rule.accountId,
       rule.amount,
+      rule.recurrenceKind,
       rule.intervalDays,
+      rule.intervalUnit ?? "day",
+      rule.weekdays && rule.weekdays.length > 0 ? rule.weekdays.join(",") : null,
+      rule.monthlyMode ?? null,
       rule.startDate,
       rule.endDate,
+      rule.occurrenceCount,
       rule.description
     ]
   );
@@ -257,6 +268,54 @@ export async function upsertRecurringRule(rule: RecurringRule): Promise<void> {
 export async function deleteRecurringRule(id: string): Promise<void> {
   const db = await openDatabase();
   await db.execute("DELETE FROM recurring_rules WHERE id = $1", [id]);
+}
+
+type ReconciliationRow = {
+  id: string;
+  date: string;
+  expected: number;
+  actual: number;
+  diff: number;
+  operation_id: string | null;
+  created_at: string;
+};
+
+export async function listReconciliations(): Promise<Reconciliation[]> {
+  const db = await openDatabase();
+  const rows = await db.select<ReconciliationRow[]>(
+    `SELECT id, date, expected, actual, diff, operation_id, created_at
+       FROM reconciliations
+      ORDER BY created_at DESC`
+  );
+  return rows.map((row) => ({
+    id: row.id,
+    date: row.date,
+    expected: row.expected,
+    actual: row.actual,
+    diff: row.diff,
+    operationId: row.operation_id,
+    createdAt: row.created_at
+  }));
+}
+
+export async function saveReconciliation(rec: Reconciliation): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    `INSERT INTO reconciliations (id, date, expected, actual, diff, operation_id, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [rec.id, rec.date, rec.expected, rec.actual, rec.diff, rec.operationId, rec.createdAt]
+  );
+}
+
+// Служебная статья для корректирующих операций сверки (создаётся при первом использовании).
+export async function ensureAdjustmentCategory(type: "income" | "expense"): Promise<string> {
+  const db = await openDatabase();
+  const id = type === "income" ? "adjust-income" : "adjust-expense";
+  await db.execute(
+    "INSERT OR IGNORE INTO categories (id, name, type, color) VALUES ($1, $2, $3, $4)",
+    [id, "Корректировка", type, "#737373"]
+  );
+  return id;
 }
 
 function oneYearAfter(iso: string): string {
@@ -276,8 +335,13 @@ export async function regenerateRecurringOperations(): Promise<void> {
   await db.execute("DELETE FROM operations WHERE recurring_id IS NOT NULL");
 
   for (const rule of rules) {
-    const horizon = horizonSetting || oneYearAfter(rule.startDate);
-    const dates = recurringOccurrences(rule.startDate, rule.intervalDays, rule.endDate, horizon);
+    // Если конец фин. года раньше старта правила, правило разложилось бы в ноль
+    // операций — в этом случае раскладываем на год вперёд от старта правила.
+    const horizon =
+      horizonSetting && horizonSetting >= rule.startDate
+        ? horizonSetting
+        : oneYearAfter(rule.startDate);
+    const dates = recurringRuleOccurrences(rule, horizon);
     for (const date of dates) {
       await db.execute(
         `INSERT OR REPLACE INTO operations

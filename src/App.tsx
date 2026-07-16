@@ -88,5 +88,5 @@ export function App() {
     return <Onboarding onComplete={handleComplete} />;
   }
 
-  return <AppShell appState={status.state} onChanged={load} />;
+  return <AppShell onChanged={load} />;
 }

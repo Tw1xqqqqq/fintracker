@@ -8,7 +8,7 @@ import {
   getSortedRowModel,
   useReactTable
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronsUpDown, Plus } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Plus, X } from "lucide-react";
 import type { Account, Category, Operation, OperationType } from "../types";
 import { formatMoney } from "../lib/finance";
 import {
@@ -79,6 +79,7 @@ export function OperationsJournal() {
 
   const filtered = useMemo(() => {
     return operations.filter((op) => {
+      if (op.type === "transfer" && op.accountId !== op.sourceAccountId) return false;
       if (typeFilter !== "all" && op.type !== typeFilter) return false;
       if (from && op.date < from) return false;
       if (to && op.date > to) return false;
@@ -97,11 +98,18 @@ export function OperationsJournal() {
         header: "Тип",
         cell: (info) => TYPE_LABELS[info.getValue() as OperationType]
       }),
-      helper.accessor((row) => categoryMap.get(row.categoryId)?.name ?? "—", {
+      helper.accessor((row) => (row.categoryId ? categoryMap.get(row.categoryId)?.name ?? "—" : "—"), {
         id: "category",
         header: "Статья"
       }),
-      helper.accessor((row) => accountMap.get(row.accountId)?.name ?? "—", {
+      helper.accessor((row) => {
+        if (row.type === "transfer") {
+          const source = row.sourceAccountId ? accountMap.get(row.sourceAccountId)?.name : null;
+          const target = row.targetAccountId ? accountMap.get(row.targetAccountId)?.name : null;
+          return `${source ?? "—"} → ${target ?? "—"}`;
+        }
+        return accountMap.get(row.accountId)?.name ?? "—";
+      }, {
         id: "account",
         header: "Счёт"
       }),
@@ -177,49 +185,69 @@ export function OperationsJournal() {
     );
   }
 
+  const filtersActive = typeFilter !== "all" || from !== "" || to !== "";
+
   return (
-    <div className="journal">
-      <div className="journal-toolbar">
-        <div className="filters">
-          <label className="filter">
-            <span>Тип</span>
-            <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}>
-              <option value="all">Все</option>
-              <option value="income">Доход</option>
-              <option value="expense">Расход</option>
-              <option value="transfer">Перевод</option>
-            </select>
-          </label>
-          <label className="filter">
-            <span>С</span>
-            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-          </label>
-          <label className="filter">
-            <span>По</span>
-            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-          </label>
-          {(typeFilter !== "all" || from || to) && (
+    <div className="panel budget-panel">
+      <div className="budget-toolbar">
+        <div className="budget-toolbar-left">
+          <span className="budget-title">Журнал операций</span>
+          <span className="budget-range">
+            {filtered.length} из {operations.length}
+          </span>
+        </div>
+
+        <div className="budget-toolbar-right">
+          <select
+            className="budget-granularity"
+            aria-label="Тип операции"
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+          >
+            <option value="all">Все типы</option>
+            <option value="income">Доход</option>
+            <option value="expense">Расход</option>
+            <option value="transfer">Перевод</option>
+          </select>
+          <input
+            type="date"
+            className="budget-granularity"
+            aria-label="С даты"
+            title="С даты"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+          />
+          <input
+            type="date"
+            className="budget-granularity"
+            aria-label="По дату"
+            title="По дату"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+          />
+          {filtersActive && (
             <button
               type="button"
-              className="intro-secondary"
+              className="icon-button"
+              aria-label="Сбросить фильтры"
+              title="Сбросить фильтры"
               onClick={() => {
                 setTypeFilter("all");
                 setFrom("");
                 setTo("");
               }}
             >
-              Сбросить
+              <X size={16} />
             </button>
           )}
+          <button type="button" className="intro-submit budget-add" onClick={openNew}>
+            <Plus size={16} />
+            Добавить
+          </button>
         </div>
-
-        <button type="button" className="intro-submit" onClick={openNew}>
-          <Plus size={18} />
-          Добавить
-        </button>
       </div>
 
-      <div className="table-wrap">
+      <div className="budget-table-wrap">
         <table className="data-table">
           <thead>
             {table.getHeaderGroups().map((headerGroup) => (

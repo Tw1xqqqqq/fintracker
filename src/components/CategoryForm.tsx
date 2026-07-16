@@ -10,16 +10,24 @@ function newId() {
 
 type CategoryFormProps = {
   initial: Category | null;
+  defaultType?: Category["type"];
   error: string | null;
   onSave: (category: Category) => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
 };
 
-export function CategoryForm({ initial, error, onSave, onDelete, onCancel }: CategoryFormProps) {
+export function CategoryForm({
+  initial,
+  defaultType,
+  error,
+  onSave,
+  onDelete,
+  onCancel
+}: CategoryFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [type, setType] = useState<Category["type"]>(initial?.type ?? "expense");
-  const [color, setColor] = useState(initial?.color ?? "#1c7ed6");
+  const [type, setType] = useState<Category["type"]>(initial?.type ?? defaultType ?? "expense");
+  const color = initial?.color ?? "#171717";
 
   const isValid = name.trim() !== "";
 
@@ -36,50 +44,65 @@ export function CategoryForm({ initial, error, onSave, onDelete, onCancel }: Cat
 
   return (
     <div className="modal-overlay" onClick={onCancel}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
-        <header className="modal-header">
-          <h2>{initial ? "Редактировать статью" : "Новая статья"}</h2>
+      <div
+        className="modal modal--category"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="category-dialog-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="category-modal-header">
+          <h2 id="category-dialog-title">
+            {initial ? "Редактирование категории" : "Создание категории"}
+          </h2>
           <button type="button" className="icon-button" onClick={onCancel} aria-label="Закрыть">
-            <X size={18} />
+            <X size={14} />
           </button>
         </header>
 
-        <form className="op-form" onSubmit={handleSubmit}>
-          <label className="field">
-            <span>Название</span>
+        <form className="category-form" onSubmit={handleSubmit}>
+          <div className="category-type-switch">
+            <button
+              type="button"
+              className={
+                type === "expense"
+                  ? "category-type-option category-type-option--active"
+                  : "category-type-option"
+              }
+              aria-pressed={type === "expense"}
+              onClick={() => setType("expense")}
+            >
+              Расход
+            </button>
+            <button
+              type="button"
+              className={
+                type === "income"
+                  ? "category-type-option category-type-option--active"
+                  : "category-type-option"
+              }
+              aria-pressed={type === "income"}
+              onClick={() => setType("income")}
+            >
+              Доход
+            </button>
+          </div>
+
+          <label className="field category-field">
+            <span>Название категории</span>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Например, Продукты"
+              placeholder="Например: подписки"
               autoFocus
               required
             />
           </label>
 
-          <div className="op-form-grid">
-            <label className="field">
-              <span>Тип</span>
-              <select value={type} onChange={(e) => setType(e.target.value as Category["type"])}>
-                <option value="income">Доход</option>
-                <option value="expense">Расход</option>
-              </select>
-            </label>
-
-            <label className="field">
-              <span>Цвет</span>
-              <input
-                type="color"
-                className="color-input"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-              />
-            </label>
-          </div>
-
           {error && <p className="error-text">{error}</p>}
 
-          <div className="modal-actions">
+          <div className="category-modal-actions">
             {initial ? (
               <button
                 type="button"
@@ -97,7 +120,7 @@ export function CategoryForm({ initial, error, onSave, onDelete, onCancel }: Cat
                 Отмена
               </button>
               <button type="submit" className="intro-submit" disabled={!isValid}>
-                Сохранить
+                {initial ? "Сохранить" : "Создать"}
               </button>
             </div>
           </div>

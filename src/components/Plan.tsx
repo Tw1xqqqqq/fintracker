@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { generateWeeks } from "../lib/finance";
 import { getSetting, regenerateRecurringOperations, setSetting } from "../lib/repository";
-import { PlanTable } from "./PlanTable";
+import { BudgetTable } from "./BudgetTable";
 
 function formatDate(iso: string) {
   if (!iso) return "—";
@@ -24,6 +24,7 @@ export function Plan() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editingYear, setEditingYear] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -67,6 +68,7 @@ export function Plan() {
       // горизонт изменился — пересобрать регулярные операции под новый диапазон
       await regenerateRecurringOperations();
       setSaved(true);
+      setEditingYear(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -89,6 +91,12 @@ export function Plan() {
         </p>
       </div>
     );
+  }
+
+  // Год настроен — показываем таблицу бюджета (как в макете);
+  // мастер года открывается кнопкой-карандашом в тулбаре.
+  if (valid && !editingYear) {
+    return <BudgetTable weeks={weeks} onEditYear={() => setEditingYear(true)} />;
   }
 
   return (
@@ -159,14 +167,24 @@ export function Plan() {
 
       <div className="modal-actions">
         <span className="fy-hint">{saved ? "Сохранено" : ""}</span>
-        <button type="button" className="intro-submit" disabled={!valid || saving} onClick={handleSave}>
-          {saving ? "Сохранение…" : "Сохранить год"}
-        </button>
+        <div className="modal-actions-right">
+          {valid && editingYear && (
+            <button type="button" className="intro-secondary" onClick={() => setEditingYear(false)}>
+              Назад к бюджету
+            </button>
+          )}
+          <button
+            type="button"
+            className="intro-submit"
+            disabled={!valid || saving}
+            onClick={handleSave}
+          >
+            {saving ? "Сохранение…" : "Сохранить год"}
+          </button>
+        </div>
       </div>
 
       </div>
-
-      {valid && <PlanTable weeks={weeks} />}
     </div>
   );
 }

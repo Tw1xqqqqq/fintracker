@@ -12,7 +12,13 @@ import {
 } from "../lib/repository";
 import { RecurringForm } from "./RecurringForm";
 
-function intervalLabel(days: number) {
+function intervalLabel(rule: RecurringRule) {
+  if (rule.recurrenceKind === "daily") return "ежедневно";
+  if (rule.recurrenceKind === "weekly") return "еженедельно";
+  if (rule.recurrenceKind === "monthly") return "ежемесячно";
+  if (rule.recurrenceKind === "yearly") return "ежегодно";
+  if (rule.recurrenceKind === "weekdays") return "по будням";
+  const days = rule.intervalDays;
   if (days === 7) return "каждую неделю";
   if (days === 14) return "каждые 2 недели";
   if (days === 365) return "раз в год";
@@ -90,7 +96,7 @@ export function RecurringManager() {
         </div>
         {!error && accounts.length > 0 && categories.length > 0 && (
           <button type="button" className="intro-submit" onClick={openNew}>
-            <Plus size={18} />
+            <Plus size={16} />
             Добавить
           </button>
         )}
@@ -125,7 +131,7 @@ export function RecurringManager() {
                       {rule.description || category?.name || "Платёж"}
                     </span>
                     <span className="rec-meta">
-                      {category?.name ?? "—"} · {intervalLabel(rule.intervalDays)}
+                      {category?.name ?? "—"} · {intervalLabel(rule)}
                     </span>
                   </span>
                   <span className={`amount amount--${rule.type}`}>

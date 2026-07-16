@@ -73,9 +73,11 @@ export function RecurringForm({
       categoryId: effectiveCategoryId,
       accountId,
       amount: numericAmount,
+      recurrenceKind: initial?.recurrenceKind ?? "interval",
       intervalDays: numericInterval,
       startDate,
       endDate: endDate === "" ? null : endDate,
+      occurrenceCount: initial?.occurrenceCount ?? null,
       description: description.trim()
     });
   };

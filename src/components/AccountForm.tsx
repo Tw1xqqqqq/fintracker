@@ -10,15 +10,16 @@ function newId() {
 
 type AccountFormProps = {
   initial: Account | null;
+  defaultType?: Account["type"];
   error: string | null;
   onSave: (account: Account) => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
 };
 
-export function AccountForm({ initial, error, onSave, onDelete, onCancel }: AccountFormProps) {
+export function AccountForm({ initial, defaultType, error, onSave, onDelete, onCancel }: AccountFormProps) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [type, setType] = useState<Account["type"]>(initial?.type ?? "card");
+  const [type, setType] = useState<Account["type"]>(initial?.type ?? defaultType ?? "card");
   const [balance, setBalance] = useState(initial ? String(initial.balance) : "0");
 
   const numericBalance = Number(balance);

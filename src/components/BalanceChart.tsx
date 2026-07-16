@@ -24,9 +24,9 @@ const compact = new Intl.NumberFormat("ru-RU", {
   maximumFractionDigits: 1
 });
 
-const GREEN = "#2f9e44";
-const RED = "#c92a2a";
-const BLUE = "#1c7ed6";
+const GREEN = "#059669";
+const RED = "#ef4444";
+const BLUE = "#171717";
 
 type BalanceChartProps = {
   weeks: WeekBalance[];
@@ -40,12 +40,19 @@ export function BalanceChart({ weeks }: BalanceChartProps) {
   }));
 
   return (
-    <div className="panel">
-      <h2 className="panel-title">Баланс по неделям</h2>
-      <div className="chart-wrap">
+    <div className="panel budget-panel">
+      <div className="budget-toolbar">
+        <div className="budget-toolbar-left">
+          <span className="budget-title">Баланс по неделям</span>
+          <span className="budget-range">
+            {weeks.length} нед. · разрывов: {weeks.filter((week) => week.isCashGap).length}
+          </span>
+        </div>
+      </div>
+      <div className="chart-body">
         <ResponsiveContainer width="100%" height={360}>
           <ComposedChart data={data} margin={{ top: 8, right: 12, bottom: 8, left: 8 }}>
-            <CartesianGrid stroke="#e3e9ee" strokeDasharray="3 3" vertical={false} />
+            <CartesianGrid stroke="#e5e5e5" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="weekStart"
               tickFormatter={shortWeek}
@@ -62,7 +69,7 @@ export function BalanceChart({ weeks }: BalanceChartProps) {
               labelFormatter={(label) => `Неделя ${shortWeek(String(label))}`}
             />
             <Legend />
-            <ReferenceLine y={0} stroke="#adb5bd" />
+            <ReferenceLine y={0} stroke="#d4d4d4" />
 
             <Bar dataKey="incomeActual" name="Доход (факт)" fill={GREEN} maxBarSize={14} radius={[3, 3, 0, 0]} />
             <Bar dataKey="expenseActual" name="Расход (факт)" fill={RED} maxBarSize={14} radius={[3, 3, 0, 0]} />

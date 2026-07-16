@@ -95,7 +95,7 @@ export function CategoriesManager() {
         </div>
         {!error && (
           <button type="button" className="intro-submit" onClick={openNew}>
-            <Plus size={18} />
+            <Plus size={16} />
             Добавить статью
           </button>
         )}

@@ -17,7 +17,13 @@ const TYPE_LABELS: Record<Account["type"], string> = {
   credit: "Кредит"
 };
 
-export function AccountsManager() {
+type AccountsManagerProps = {
+  filterType?: Account["type"];
+  title?: string;
+  description?: string;
+};
+
+export function AccountsManager({ filterType, title, description }: AccountsManagerProps = {}) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +31,9 @@ export function AccountsManager() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Account | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const visibleAccounts = filterType
+    ? accounts.filter((account) => account.type === filterType)
+    : accounts;
 
   async function reload() {
     setLoading(true);
@@ -75,12 +84,14 @@ export function AccountsManager() {
     <div className="panel">
       <div className="panel-head">
         <div>
-          <h2 className="panel-title">Счета</h2>
-          <p className="panel-lead">Наличные, карты, накопления и кредитные счета.</p>
+          <h2 className="panel-title">{title ?? "Счета"}</h2>
+          <p className="panel-lead">
+            {description ?? "Наличные, карты, накопления и кредитные счета."}
+          </p>
         </div>
         {!error && (
           <button type="button" className="intro-submit" onClick={openNew}>
-            <Plus size={18} />
+            <Plus size={16} />
             Добавить счёт
           </button>
         )}
@@ -96,11 +107,11 @@ export function AccountsManager() {
             <code> npm run tauri dev</code>.
           </p>
         </>
-      ) : accounts.length === 0 ? (
-        <p className="cat-empty">Пока нет счетов.</p>
+      ) : visibleAccounts.length === 0 ? (
+        <p className="cat-empty">В этом разделе пока нет счетов.</p>
       ) : (
         <ul className="acc-list">
-          {accounts.map((account) => (
+          {visibleAccounts.map((account) => (
             <li key={account.id}>
               <button type="button" className="acc-item" onClick={() => openEdit(account)}>
                 <span className="acc-info">
@@ -117,6 +128,7 @@ export function AccountsManager() {
       {formOpen && (
         <AccountForm
           initial={editing}
+          defaultType={filterType}
           error={formError}
           onSave={handleSave}
           onDelete={handleDelete}

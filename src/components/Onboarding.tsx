@@ -29,8 +29,8 @@ export function Onboarding({ onComplete }: OnboardingProps) {
     <main className="intro-screen">
       <section className="intro-card">
         <div className="intro-brand">
-          <CircleDollarSign size={32} />
-          <span>FinTracker</span>
+          <CircleDollarSign size={24} />
+          <span>Финансы</span>
         </div>
 
         <h1>Добро пожаловать</h1>

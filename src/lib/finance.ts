@@ -1,4 +1,4 @@
-import type { Account, Category, CategoryPlan, Operation, WeekPlan } from "../types";
+import type { Account, Category, Operation, RecurringRule, WeekPlan } from "../types";
 
 export function formatMoney(value: number): string {
   return new Intl.NumberFormat("ru-RU", {
@@ -197,37 +197,15 @@ function hasActivity(plan: WeekPlan): boolean {
   );
 }
 
-// Добавляет к недельному плану суммы из сетки статей (week_category_plans):
-// доходные статьи -> incomePlan, расходные -> expensePlan.
-function addCategoryPlans(
-  plans: WeekPlan[],
-  categories: Category[],
-  categoryPlans: CategoryPlan[]
-): void {
-  if (categoryPlans.length === 0) return;
-  const typeById = new Map(categories.map((category) => [category.id, category.type]));
-  const byWeek = new Map(plans.map((plan) => [plan.weekStart, plan]));
-  for (const categoryPlan of categoryPlans) {
-    const type = typeById.get(categoryPlan.categoryId);
-    const target = byWeek.get(categoryPlan.weekStart);
-    if (!type || !target) continue;
-    if (type === "income") target.incomePlan += categoryPlan.amount;
-    else target.expensePlan += categoryPlan.amount;
-  }
-}
-
 // Собирает недельную цепочку баланса из данных (без обращения к БД).
 // Стартовый баланс = сумма балансов счетов; далее generateWeeks →
-// aggregateWeeks → balanceSeries. План недели = плановые операции +
-// суммы из сетки статей (categoryPlans); факт — из фактических операций.
+// aggregateWeeks → balanceSeries. План и факт берутся только из operations.
 // Длинный хвост пустых недель после последней активной обрезается
 // (оставляем минимум для контекста). Без даты старта недели не строятся.
 export function computeWeeklyBalance(
   startDate: string | null,
   accounts: Account[],
-  operations: Operation[],
-  categories: Category[] = [],
-  categoryPlans: CategoryPlan[] = []
+  operations: Operation[]
 ): WeeklyBalanceResult {
   const initialBalance = sumAccountBalances(accounts);
   if (!startDate) {
@@ -235,7 +213,6 @@ export function computeWeeklyBalance(
   }
 
   const plans = aggregateWeeks(operations, generateWeeks(startDate));
-  addCategoryPlans(plans, categories, categoryPlans);
 
   let lastActive = -1;
   plans.forEach((plan, index) => {
@@ -263,6 +240,7 @@ export function suggestWeeklyAverages(
   const totals = new Map<string, number>();
   for (const operation of operations) {
     if (operation.status !== "actual" || operation.type === "transfer") continue;
+    if (!operation.categoryId) continue;
     if (operation.date < from || operation.date > to) continue;
     totals.set(operation.categoryId, (totals.get(operation.categoryId) ?? 0) + operation.amount);
   }
@@ -272,6 +250,34 @@ export function suggestWeeklyAverages(
     averages.set(categoryId, Math.round(total / WEEKS_PER_YEAR));
   });
   return averages;
+}
+
+// Ячейка бюджета показывает общий план: ручная часть + зафиксированные
+// planned-операции (например, регулярные). При редактировании меняем только
+// ручную часть; значение ниже зафиксированной суммы недопустимо.
+export function manualPlanAmountForTarget(
+  targetAmount: number,
+  totalAmount: number,
+  currentManualAmount: number
+): number | null {
+  const fixedAmount = Math.max(0, totalAmount - currentManualAmount);
+  if (targetAmount < fixedAmount) return null;
+  return targetAmount - fixedAmount;
+}
+
+// Расчётный остаток на дату: стартовые балансы счетов + нетто фактических
+// операций по эту дату включительно (план и переводы не влияют).
+export function computeExpectedBalance(
+  accounts: Account[],
+  operations: Operation[],
+  asOfDate: string
+): number {
+  return operations.reduce((sum, operation) => {
+    if (operation.status !== "actual" || operation.date > asOfDate) return sum;
+    if (operation.type === "income") return sum + operation.amount;
+    if (operation.type === "expense") return sum - operation.amount;
+    return sum;
+  }, sumAccountBalances(accounts));
 }
 
 const MAX_OCCURRENCES = 1000; // предохранитель от зацикливания
@@ -300,6 +306,129 @@ export function recurringOccurrences(
     cursor = addDays(cursor, intervalDays);
     index += 1;
   }
+  return dates;
+}
+
+function isoWeekday(date: Date): number {
+  const day = date.getUTCDay();
+  return day === 0 ? 7 : day; // 1 (пн) … 7 (вс)
+}
+
+function mondayOf(date: Date): Date {
+  return addDays(date, 1 - isoWeekday(date));
+}
+
+// Повтор «в то же число месяца» с поджатием к концу короткого месяца (31 -> 28/30).
+function monthlyByDate(start: Date, monthOffset: number): Date {
+  const first = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + monthOffset, 1));
+  const lastDay = new Date(
+    Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)
+  ).getUTCDate();
+  return new Date(
+    Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(start.getUTCDate(), lastDay))
+  );
+}
+
+function monthlyOccurrence(start: Date, monthOffset: number): Date {
+  const year = start.getUTCFullYear();
+  const month = start.getUTCMonth() + monthOffset;
+  const targetMonthStart = new Date(Date.UTC(year, month, 1));
+  const targetYear = targetMonthStart.getUTCFullYear();
+  const targetMonth = targetMonthStart.getUTCMonth();
+  const weekday = start.getUTCDay();
+  const ordinal = Math.ceil(start.getUTCDate() / 7);
+  const firstWeekday = targetMonthStart.getUTCDay();
+  const offset = (weekday - firstWeekday + 7) % 7;
+  let day = 1 + offset + (ordinal - 1) * 7;
+  const daysInMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
+  if (day > daysInMonth) day -= 7;
+  return new Date(Date.UTC(targetYear, targetMonth, day));
+}
+
+function yearlyOccurrence(start: Date, yearOffset: number): Date {
+  const year = start.getUTCFullYear() + yearOffset;
+  const month = start.getUTCMonth();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(start.getUTCDate(), lastDay)));
+}
+
+// Генерирует даты с учётом календарного типа регулярности и ограничений правила.
+// Для monthly сохраняется порядковый день недели (например, первый вторник месяца),
+// для yearly — месяц и число, для weekdays пропускаются суббота и воскресенье.
+// Для kind = interval единица шага задаётся intervalUnit (день/неделя/месяц/год):
+// неделя — выбранные дни недели (weekdays) внутри каждого N-го недельного блока,
+// месяц — то же число (monthlyMode = date) или порядковый день недели (weekday).
+export function recurringRuleOccurrences(rule: RecurringRule, horizonEnd: string): string[] {
+  const start = parseIsoDate(rule.startDate);
+  const horizon = parseIsoDate(horizonEnd);
+  if (!start || !horizon || rule.intervalDays < 1) return [];
+
+  const ruleEnd = rule.endDate ? parseIsoDate(rule.endDate) : null;
+  const limit = ruleEnd && ruleEnd.getTime() < horizon.getTime() ? ruleEnd : horizon;
+  if (limit.getTime() < start.getTime()) return [];
+
+  const maxCount = Math.min(rule.occurrenceCount ?? MAX_OCCURRENCES, MAX_OCCURRENCES);
+  if (maxCount < 1) return [];
+
+  const unit = rule.recurrenceKind === "interval" ? rule.intervalUnit ?? "day" : "day";
+
+  // Недельный интервал с выбранными днями: идём блоками по N недель от недели старта
+  // и внутри блока отдаём отмеченные дни (не раньше даты старта).
+  if (rule.recurrenceKind === "interval" && unit === "week") {
+    const selected =
+      rule.weekdays && rule.weekdays.length > 0
+        ? [...rule.weekdays].sort((a, b) => a - b)
+        : [isoWeekday(start)];
+    const dates: string[] = [];
+    let block = mondayOf(start);
+    let guard = 0;
+    outer: while (block.getTime() <= limit.getTime() && guard < MAX_OCCURRENCES) {
+      for (const weekday of selected) {
+        const date = addDays(block, weekday - 1);
+        if (date.getTime() < start.getTime()) continue;
+        if (date.getTime() > limit.getTime()) break outer;
+        dates.push(toIsoDate(date));
+        if (dates.length >= maxCount) break outer;
+      }
+      block = addDays(block, rule.intervalDays * 7);
+      guard += 1;
+    }
+    return dates;
+  }
+
+  const dates: string[] = [];
+  let cursor = start;
+  let sequenceIndex = 0;
+
+  while (
+    cursor.getTime() <= limit.getTime() &&
+    dates.length < maxCount &&
+    sequenceIndex < MAX_OCCURRENCES * 2
+  ) {
+    const isWeekday = cursor.getUTCDay() !== 0 && cursor.getUTCDay() !== 6;
+    if (rule.recurrenceKind !== "weekdays" || isWeekday) {
+      dates.push(toIsoDate(cursor));
+    }
+
+    sequenceIndex += 1;
+    if (rule.recurrenceKind === "monthly") {
+      cursor = monthlyOccurrence(start, sequenceIndex);
+    } else if (rule.recurrenceKind === "yearly") {
+      cursor = yearlyOccurrence(start, sequenceIndex);
+    } else if (rule.recurrenceKind === "weekdays") {
+      cursor = addDays(cursor, 1);
+    } else if (rule.recurrenceKind === "interval" && unit === "month") {
+      cursor =
+        rule.monthlyMode === "weekday"
+          ? monthlyOccurrence(start, sequenceIndex * rule.intervalDays)
+          : monthlyByDate(start, sequenceIndex * rule.intervalDays);
+    } else if (rule.recurrenceKind === "interval" && unit === "year") {
+      cursor = yearlyOccurrence(start, sequenceIndex * rule.intervalDays);
+    } else {
+      cursor = addDays(cursor, rule.intervalDays);
+    }
+  }
+
   return dates;
 }
 
