@@ -11,21 +11,21 @@ Desktop-приложение для план-факт учета личных ф
 - TanStack Table
 - Recharts
 
-Что сделали 15.07.2026
-- Проверили сквозной сценарий после переводов: баланс на дашборде и в сверке не двоится
-- Привели экран «Операции» к макету Фигмы
-- Привели экран Настройки и Аналитику в общему дизайну
-- Реализовали переводы между счетами
-- Написали функционал спец-операции (Пока доделываем)
+Что сделали 17.07.2026
+- Переделали ячейки режима «Факт» в двухстрочные: сверху сумма факта, снизу дельта «+N₽ к плану»
+- Добавили дельту к плану в строку «Итоговый баланс» в режиме «Факт»
+- Добавили значок регулярности (календарик) у статей, на которых висит регулярное правило
+- Реализовали пользовательскую настройку у регулярности статей
+- Проверили tsc и тесты
 - Покрыли расчёты 2–3 юнит-тестами на ключевые случаи.
 
 
-<img width="214" height="859" alt="image" src="https://github.com/user-attachments/assets/2386c5d4-a8d7-425a-8c40-62733dde6c52" />
-<img width="1266" height="843" alt="image" src="https://github.com/user-attachments/assets/d481eb39-b364-4d1a-9228-a2d45ad39d84" />
-<img width="1278" height="816" alt="image" src="https://github.com/user-attachments/assets/e7ddb291-019c-467f-beff-a1695787db68" />
-<img width="1270" height="838" alt="image" src="https://github.com/user-attachments/assets/89681cd3-2d51-444d-b87c-d9ea5d6a5e12" />
+<img width="1272" height="838" alt="image" src="https://github.com/user-attachments/assets/4e178138-277d-43e6-bcb2-0257e96ca4d8" />
+<img width="1282" height="840" alt="image" src="https://github.com/user-attachments/assets/23191759-ef48-422a-8192-a4ef9bf10d37" />
+<img width="697" height="611" alt="image" src="https://github.com/user-attachments/assets/ee095504-bf3e-42a2-a258-033966dacf3e" />
+<img width="1056" height="610" alt="image" src="https://github.com/user-attachments/assets/ff635621-b86a-4d0a-baba-511198037aa6" />
 
-<img width="683" height="415" alt="image" src="https://github.com/user-attachments/assets/723fb0af-b50d-49af-8a16-051b84d31bef" />
+<img width="625" height="842" alt="image" src="https://github.com/user-attachments/assets/6b1736fe-75f6-4aad-97d4-154978bbae07" />
 
 
 
