@@ -1585,6 +1585,60 @@ h1 {
   background: #e3eefc;
 }
 
+/* Неделя с заполненным фактом — янтарная шапка + значок с подсказкой */
+.budget-col--filled {
+  background: #fef9e7;
+}
+
+.budget-week-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.budget-week-flag {
+  display: inline-flex;
+  color: #d97706;
+  cursor: help;
+}
+
+/* Двухстрочные факт-ячейки: сумма + дельта «к плану» */
+.budget-cell-main {
+  display: block;
+  font-weight: 500;
+}
+
+.budget-cell-sub {
+  display: block;
+  font-size: 11px;
+  line-height: 1.3;
+  font-weight: 500;
+}
+
+.budget-cell-sub--muted {
+  color: var(--muted);
+}
+
+.budget-cell-sub.amount--income {
+  color: var(--income);
+}
+
+.budget-cell-sub.amount--expense {
+  color: var(--expense);
+}
+
+/* План как ожидаемое значение в неделях без факта */
+.budget-ghost {
+  color: #a3a3a3;
+}
+
+/* Значок регулярного платежа у статьи */
+.budget-cat-recurring {
+  display: inline-flex;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
 .budget-group-cell {
   display: inline-flex;
   align-items: center;

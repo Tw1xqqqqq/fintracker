@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CalendarSync,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   Pencil,
   Plus,
   Sparkles
@@ -22,6 +24,7 @@ import {
   listAccounts,
   listCategories,
   listOperations,
+  listRecurringRules,
   regenerateRecurringOperations,
   upsertCategory,
   upsertOperation,
@@ -34,6 +37,16 @@ const PAGE_SIZE = 6;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 const fmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
+
+// Суммы в таблице — без группировки и с «₽», как в макете (35000₽).
+const fmtPlain = new Intl.NumberFormat("ru-RU", {
+  maximumFractionDigits: 0,
+  useGrouping: false
+});
+
+function money(value: number): string {
+  return `${fmtPlain.format(value)}₽`;
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -65,6 +78,8 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   // Счёт для создаваемых план-операций: primaryAccountId из настроек, иначе первый.
   const [defaultAccountId, setDefaultAccountId] = useState("");
   const [operations, setOperations] = useState<Operation[]>([]);
+  // Статьи, на которых висит регулярное правило (для значка-календарика).
+  const [recurringCatIds, setRecurringCatIds] = useState<Set<string>>(new Set());
   const [initialBalance, setInitialBalance] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -104,13 +119,15 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     setLoading(true);
     setError(null);
     try {
-      const [cats, ops, accounts, primaryId] = await Promise.all([
+      const [cats, ops, accounts, primaryId, rules] = await Promise.all([
         listCategories(),
         listOperations(),
         listAccounts(),
-        getSetting("primaryAccountId")
+        getSetting("primaryAccountId"),
+        listRecurringRules()
       ]);
       setOperations(ops);
+      setRecurringCatIds(new Set(rules.map((rule) => rule.categoryId)));
       setAccounts(accounts);
       setDefaultAccountId(
         accounts.find((account) => account.id === primaryId)?.id ?? accounts[0]?.id ?? ""
@@ -210,6 +227,12 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
 
     return { planIncome, planExpense, factIncome, factExpense, runningPlan, runningFact };
   }, [weeks.length, incomeCats, expenseCats, planAt, factAt, initialBalance]);
+
+  // «Данные за неделю заполнены» — по неделе есть хотя бы один факт.
+  const weekHasFact = useMemo(
+    () => weeks.map((_, i) => totals.factIncome[i] + totals.factExpense[i] > 0),
+    [weeks, totals]
+  );
 
   const suggestions = useMemo(
     () =>
@@ -391,6 +414,8 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     }
 
     if (mode === "fact") {
+      const fact = factAt(globalIdx, category.id);
+      const plan = planAt(globalIdx, category.id);
       return (
         <button
           type="button"
@@ -404,7 +429,7 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
             })
           }
         >
-          {numOrDash(factAt(globalIdx, category.id))}
+          {factWithDelta(fact, plan, category.type)}
         </button>
       );
     }
@@ -413,55 +438,102 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     return diffNode(diff, category.type);
   };
 
+  // Факт-ячейка: сумма факта + дельта «к плану»; без факта — план серым.
+  const factWithDelta = (fact: number, plan: number, type: Category["type"]) => {
+    if (fact) {
+      return (
+        <>
+          <span className="budget-cell-main">{money(fact)}</span>
+          {plan > 0 && deltaSub(fact - plan, type)}
+        </>
+      );
+    }
+    if (plan) return <span className="budget-ghost">{money(plan)}</span>;
+    return dash;
+  };
+
+  // Подстрока «к плану»: зелёная — лучше плана, красная — хуже.
+  const deltaSub = (delta: number, type: Category["type"] | "balance") => {
+    if (delta === 0) {
+      return <span className="budget-cell-sub budget-cell-sub--muted">0₽ к плану</span>;
+    }
+    const good = type === "expense" ? delta < 0 : delta > 0;
+    return (
+      <span className={`budget-cell-sub ${good ? "amount--income" : "amount--expense"}`}>
+        {delta > 0 ? "+" : "−"}
+        {money(Math.abs(delta))} к плану
+      </span>
+    );
+  };
+
   const diffNode = (diff: number, type: Category["type"]) => {
     if (diff === 0) return dash;
     const good = type === "income" ? diff > 0 : diff < 0;
     return (
       <span className={good ? "amount amount--income" : "amount amount--expense"}>
         {diff > 0 ? "+" : ""}
-        {fmt.format(diff)}
+        {money(diff)}
       </span>
     );
   };
 
   // Итог группы за неделю в текущем режиме.
   const groupValue = (globalIdx: number, type: Category["type"]) => {
-    const plan = type === "income" ? totals.planIncome : totals.planExpense;
-    const fact = type === "income" ? totals.factIncome : totals.factExpense;
-    if (mode === "plan") return numOrDashColored(plan[globalIdx], type);
-    if (mode === "fact") return numOrDashColored(fact[globalIdx], type);
-    return diffNode(fact[globalIdx] - plan[globalIdx], type);
+    const plan = (type === "income" ? totals.planIncome : totals.planExpense)[globalIdx];
+    const fact = (type === "income" ? totals.factIncome : totals.factExpense)[globalIdx];
+    if (mode === "plan") return numOrDashColored(plan, type);
+    if (mode === "fact") return factWithDelta(fact, plan, type);
+    return diffNode(fact - plan, type);
   };
 
   const numOrDashColored = (value: number, type: Category["type"]) => {
     const cls = type === "income" ? "budget-dash budget-dash--income" : "budget-dash budget-dash--expense";
     if (!value) return <span className={cls}>—</span>;
-    return fmt.format(value);
+    return (
+      <span className={type === "income" ? "amount amount--income" : "amount amount--expense"}>
+        {money(value)}
+      </span>
+    );
   };
 
   // Недельный нетто (доход − расход) и накопленный остаток в текущем режиме.
   const netValue = (globalIdx: number) => {
     const netPlan = totals.planIncome[globalIdx] - totals.planExpense[globalIdx];
     const netFact = totals.factIncome[globalIdx] - totals.factExpense[globalIdx];
-    if (mode === "plan") return numOrDash(netPlan);
-    if (mode === "fact") return numOrDash(netFact);
+    if (mode === "plan") return netPlan ? money(netPlan) : dash;
+    if (mode === "fact") {
+      if (weekHasFact[globalIdx]) return money(netFact);
+      return netPlan ? <span className="budget-ghost">{money(netPlan)}</span> : dash;
+    }
     const diff = netFact - netPlan;
     return diff === 0 ? dash : (
       <span className={diff > 0 ? "amount amount--income" : "amount amount--expense"}>
         {diff > 0 ? "+" : ""}
-        {fmt.format(diff)}
+        {money(diff)}
       </span>
     );
   };
 
   const runningValue = (globalIdx: number) => {
-    if (mode === "plan") return fmt.format(totals.runningPlan[globalIdx]);
-    if (mode === "fact") return fmt.format(totals.runningFact[globalIdx]);
+    if (mode === "plan") return money(totals.runningPlan[globalIdx]);
+    if (mode === "fact") {
+      // будущие недели без факта — ожидаемый остаток по плану, серым
+      if (!weekHasFact[globalIdx]) {
+        return <span className="budget-ghost">{money(totals.runningPlan[globalIdx])}</span>;
+      }
+      const delta = totals.runningFact[globalIdx] - totals.runningPlan[globalIdx];
+      return (
+        <>
+          <span className="budget-cell-main">{money(totals.runningFact[globalIdx])}</span>
+          {deltaSub(delta, "balance")}
+        </>
+      );
+    }
     const diff = totals.runningFact[globalIdx] - totals.runningPlan[globalIdx];
     return diff === 0 ? dash : (
       <span className={diff > 0 ? "amount amount--income" : "amount amount--expense"}>
         {diff > 0 ? "+" : ""}
-        {fmt.format(diff)}
+        {money(diff)}
       </span>
     );
   };
@@ -598,13 +670,28 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
               <th>Категория</th>
               {pageWeeks.map((week, i) => {
                 const globalIdx = pageStart + i;
+                const isCurrent = globalIdx === currentIdx;
+                const isFilled = weekHasFact[globalIdx];
                 return (
                   <th
                     key={week.start}
-                    className={globalIdx === currentIdx ? "budget-col--current" : ""}
+                    className={
+                      isCurrent ? "budget-col--current" : isFilled ? "budget-col--filled" : ""
+                    }
                   >
                     <div className="budget-week-head">
-                      <span>Неделя {globalIdx + 1}</span>
+                      <span className="budget-week-title">
+                        Неделя {globalIdx + 1}
+                        {isFilled && !isCurrent && (
+                          <span
+                            className="budget-week-flag"
+                            title="Данные за неделю заполнены"
+                            aria-label="Данные за неделю заполнены"
+                          >
+                            <CircleAlert size={12} />
+                          </span>
+                        )}
+                      </span>
                       <span className="budget-week-sub">
                         {shortDate(week.start)} – {shortDate(week.end)}
                       </span>
@@ -648,8 +735,16 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
                 <tr key={category.id}>
                   <td>
                     <span className="budget-cat-cell">
-                      <span className="cat-swatch" style={{ background: category.color }} />
                       {category.name}
+                      {recurringCatIds.has(category.id) && (
+                        <span
+                          className="budget-cat-recurring"
+                          title="Есть регулярный платёж"
+                          aria-label="Есть регулярный платёж"
+                        >
+                          <CalendarSync size={14} />
+                        </span>
+                      )}
                     </span>
                   </td>
                   {pageWeeks.map((_, i) => weekTd(pageStart + i, catCell(category, pageStart + i)))}
@@ -694,8 +789,16 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
                 <tr key={category.id}>
                   <td>
                     <span className="budget-cat-cell">
-                      <span className="cat-swatch" style={{ background: category.color }} />
                       {category.name}
+                      {recurringCatIds.has(category.id) && (
+                        <span
+                          className="budget-cat-recurring"
+                          title="Есть регулярный платёж"
+                          aria-label="Есть регулярный платёж"
+                        >
+                          <CalendarSync size={14} />
+                        </span>
+                      )}
                     </span>
                   </td>
                   {pageWeeks.map((_, i) => weekTd(pageStart + i, catCell(category, pageStart + i)))}
