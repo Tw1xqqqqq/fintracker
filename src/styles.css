@@ -1772,6 +1772,127 @@ h1 {
   color: var(--primary-fg);
 }
 
+/* Import screen */
+.import-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+}
+
+.import-file-button {
+  cursor: pointer;
+}
+
+.import-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.import-empty .panel-lead {
+  max-width: 420px;
+}
+
+.import-success {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--income);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.import-mapping {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.import-mapping .field {
+  min-width: 150px;
+}
+
+.import-mapping .field span {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.import-recognize {
+  margin-top: 0;
+}
+
+.import-preview td {
+  color: var(--muted);
+  font-size: 12px;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.import-preview-header {
+  font-weight: 600;
+  color: var(--text) !important;
+}
+
+.import-confirm .import-desc {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-confirm th:nth-child(5),
+.import-confirm td:nth-child(5) {
+  text-align: right;
+}
+
+.import-category {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  background: var(--surface);
+  font-size: 12px;
+  max-width: 180px;
+}
+
+.import-row--off td {
+  opacity: 0.45;
+}
+
+.import-row--off td:first-child {
+  opacity: 1;
+}
+
+.import-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.import-footer .intro-submit {
+  margin-top: 0;
+}
+
+.import-summary {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.import-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warn);
+}
+
 /* Custom recurrence dialog (Пользовательская настройка) */
 .recur-overlay {
   z-index: 30; /* поверх поповера операции */

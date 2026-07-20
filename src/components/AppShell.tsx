@@ -5,6 +5,7 @@ import {
   ChartPie,
   CircleDollarSign,
   CreditCard,
+  FileUp,
   Landmark,
   PiggyBank,
   Plus,
@@ -20,6 +21,7 @@ import { AccountsManager } from "./AccountsManager";
 import { AccountingSettings } from "./AccountingSettings";
 import { RecurringManager } from "./RecurringManager";
 import { BalanceReconciliation } from "./BalanceReconciliation";
+import { ImportScreen } from "./ImportScreen";
 
 type SectionId =
   | "dashboard"
@@ -29,6 +31,7 @@ type SectionId =
   | "card"
   | "deposit"
   | "credit"
+  | "import"
   | "settings";
 
 type NavItem = {
@@ -51,7 +54,10 @@ const ACCOUNT_ITEMS: NavItem[] = [
   { id: "credit", label: "Кредит", icon: Landmark }
 ];
 
-const TOOL_ITEMS: NavItem[] = [{ id: "settings", label: "Настройки", icon: Settings }];
+const TOOL_ITEMS: NavItem[] = [
+  { id: "import", label: "Импорт", icon: FileUp },
+  { id: "settings", label: "Настройки", icon: Settings }
+];
 
 const NAV_ITEMS: NavItem[] = [...MAIN_ITEMS, ...ACCOUNT_ITEMS, ...TOOL_ITEMS];
 
@@ -186,6 +192,10 @@ function Section({ id, onChanged }: SectionProps) {
         description="Кредитные счета и кредитные карты."
       />
     );
+  }
+
+  if (id === "import") {
+    return <ImportScreen />;
   }
 
   if (id === "settings") {
