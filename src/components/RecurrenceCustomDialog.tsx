@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
-import type { IntervalUnit } from "../types";
+import type { IntervalUnit, RecurringRule } from "../types";
 
 export type CustomRecurrence = {
   count: number;
@@ -11,6 +11,63 @@ export type CustomRecurrence = {
   endDate: string;
   repeatCount: number;
 };
+
+// Часть правила, задающая регулярность (без type/category/account/amount).
+type RuleRecurrenceFields = Pick<
+  RecurringRule,
+  "recurrenceKind" | "intervalDays" | "intervalUnit" | "weekdays" | "monthlyMode" | "endDate" | "occurrenceCount"
+>;
+
+// CustomRecurrence -> поля правила (единый источник для popover и настроек).
+export function customRecurrenceToRuleFields(custom: CustomRecurrence): RuleRecurrenceFields {
+  return {
+    recurrenceKind: "interval",
+    intervalDays: custom.count,
+    intervalUnit: custom.unit,
+    weekdays: custom.unit === "week" ? custom.weekdays : null,
+    monthlyMode: custom.unit === "month" ? custom.monthlyMode : null,
+    endDate: custom.endMode === "date" ? custom.endDate : null,
+    occurrenceCount: custom.endMode === "count" ? custom.repeatCount : null
+  };
+}
+
+// Правило -> CustomRecurrence (для редактирования). Календарные виды
+// (daily/weekly/monthly/yearly/weekdays) переводятся в эквивалентный интервал.
+export function ruleToCustomRecurrence(
+  rule: RecurringRule,
+  fallbackEndDate: string
+): CustomRecurrence {
+  const base: CustomRecurrence = {
+    count: 1,
+    unit: "day",
+    weekdays: [isoWeekdayOf(rule.startDate)],
+    monthlyMode: "date",
+    endMode: rule.occurrenceCount != null ? "count" : rule.endDate ? "date" : "never",
+    endDate: rule.endDate ?? fallbackEndDate,
+    repeatCount: rule.occurrenceCount ?? 11
+  };
+  switch (rule.recurrenceKind) {
+    case "daily":
+      return { ...base, unit: "day", count: 1 };
+    case "weekly":
+      return { ...base, unit: "week", count: 1 };
+    case "weekdays":
+      return { ...base, unit: "week", count: 1, weekdays: [1, 2, 3, 4, 5] };
+    case "monthly":
+      return { ...base, unit: "month", count: 1, monthlyMode: "weekday" };
+    case "yearly":
+      return { ...base, unit: "year", count: 1 };
+    default: // interval
+      return {
+        ...base,
+        unit: rule.intervalUnit ?? "day",
+        count: rule.intervalDays >= 1 ? rule.intervalDays : 1,
+        weekdays:
+          rule.weekdays && rule.weekdays.length > 0 ? rule.weekdays : [isoWeekdayOf(rule.startDate)],
+        monthlyMode: rule.monthlyMode ?? "date"
+      };
+  }
+}
 
 const WEEKDAY_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const WEEKDAY_ACC = [

@@ -200,19 +200,22 @@ function hasActivity(plan: WeekPlan): boolean {
 // Собирает недельную цепочку баланса из данных (без обращения к БД).
 // Стартовый баланс = сумма балансов счетов; далее generateWeeks →
 // aggregateWeeks → balanceSeries. План и факт берутся только из operations.
-// Длинный хвост пустых недель после последней активной обрезается
-// (оставляем минимум для контекста). Без даты старта недели не строятся.
+// endDate задаёт конец горизонта (конец финансового года); без него недели
+// строятся до конца года даты старта. Длинный хвост пустых недель после
+// последней активной обрезается (оставляем минимум для контекста).
+// Без даты старта недели не строятся.
 export function computeWeeklyBalance(
   startDate: string | null,
   accounts: Account[],
-  operations: Operation[]
+  operations: Operation[],
+  endDate?: string | null
 ): WeeklyBalanceResult {
   const initialBalance = sumAccountBalances(accounts);
   if (!startDate) {
     return { startDate, initialBalance, accounts, operations, weeks: [] };
   }
 
-  const plans = aggregateWeeks(operations, generateWeeks(startDate));
+  const plans = aggregateWeeks(operations, generateWeeks(startDate, endDate ?? undefined));
 
   let lastActive = -1;
   plans.forEach((plan, index) => {
@@ -266,7 +269,7 @@ export function manualPlanAmountForTarget(
 }
 
 // Расчётный остаток на дату: стартовые балансы счетов + нетто фактических
-// операций по эту дату включительно (план и переводы не влияют).
+// операций по эту дату включительно (план и переводы не влияют на общий итог).
 export function computeExpectedBalance(
   accounts: Account[],
   operations: Operation[],
@@ -278,6 +281,46 @@ export function computeExpectedBalance(
     if (operation.type === "expense") return sum - operation.amount;
     return sum;
   }, sumAccountBalances(accounts));
+}
+
+export interface AccountBalance {
+  account: Account;
+  balance: number; // текущий остаток = стартовый баланс + факт-операции по счёту
+}
+
+// Текущий остаток каждого счёта: стартовый баланс + нетто фактических операций
+// по этому счёту. Перевод учитывается по ноге: на счёте-источнике списание,
+// на счёте-получателе зачисление (общий итог по всем счетам не меняется).
+// asOfDate — опционально; учитываются операции по эту дату включительно.
+export function computeAccountBalances(
+  accounts: Account[],
+  operations: Operation[],
+  asOfDate?: string
+): AccountBalance[] {
+  const byId = new Map<string, number>();
+  for (const account of accounts) byId.set(account.id, account.balance);
+
+  const apply = (accountId: string, delta: number) => {
+    if (!byId.has(accountId)) return; // операция по неизвестному/удалённому счёту
+    byId.set(accountId, (byId.get(accountId) ?? 0) + delta);
+  };
+
+  for (const operation of operations) {
+    if (operation.status !== "actual") continue;
+    if (asOfDate && operation.date > asOfDate) continue;
+
+    if (operation.type === "transfer") {
+      if (operation.accountId === operation.targetAccountId) apply(operation.accountId, operation.amount);
+      else if (operation.accountId === operation.sourceAccountId) apply(operation.accountId, -operation.amount);
+      continue;
+    }
+    apply(operation.accountId, operation.type === "income" ? operation.amount : -operation.amount);
+  }
+
+  return accounts.map((account) => ({
+    account,
+    balance: byId.get(account.id) ?? account.balance
+  }));
 }
 
 const MAX_OCCURRENCES = 1000; // предохранитель от зацикливания

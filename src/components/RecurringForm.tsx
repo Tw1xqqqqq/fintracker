@@ -1,6 +1,14 @@
 import { FormEvent, useMemo, useState } from "react";
-import { Trash2, X } from "lucide-react";
+import { ChevronDown, Trash2, X } from "lucide-react";
 import type { Account, Category, RecurringRule } from "../types";
+import {
+  RecurrenceCustomDialog,
+  customRecurrenceLabel,
+  customRecurrenceToRuleFields,
+  defaultCustomRecurrence,
+  ruleToCustomRecurrence
+} from "./RecurrenceCustomDialog";
+import type { CustomRecurrence } from "./RecurrenceCustomDialog";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -12,13 +20,11 @@ function newId() {
     : `rec-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-const INTERVAL_PRESETS = [
-  { days: 7, label: "неделя" },
-  { days: 14, label: "2 недели" },
-  { days: 30, label: "30 дней" },
-  { days: 90, label: "3 месяца" },
-  { days: 365, label: "год" }
-];
+function addMonths(iso: string, months: number) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCMonth(date.getUTCMonth() + months);
+  return date.toISOString().slice(0, 10);
+}
 
 type RecurringFormProps = {
   initial: RecurringRule | null;
@@ -41,10 +47,18 @@ export function RecurringForm({
   const [accountId, setAccountId] = useState(initial?.accountId ?? accounts[0]?.id ?? "");
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
-  const [intervalDays, setIntervalDays] = useState(initial ? String(initial.intervalDays) : "30");
   const [startDate, setStartDate] = useState(initial?.startDate ?? todayIso());
-  const [endDate, setEndDate] = useState(initial?.endDate ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
+
+  // Регулярность — та же CustomRecurrence, что и в поповере операции.
+  const [custom, setCustom] = useState<CustomRecurrence>(() => {
+    const initialStart = initial?.startDate ?? todayIso();
+    const fallbackEnd = addMonths(initialStart, 3);
+    return initial
+      ? ruleToCustomRecurrence(initial, fallbackEnd)
+      : defaultCustomRecurrence(initialStart, fallbackEnd);
+  });
+  const [recurrenceDialogOpen, setRecurrenceDialogOpen] = useState(false);
 
   const availableCategories = useMemo(
     () => categories.filter((c) => c.type === type),
@@ -55,14 +69,8 @@ export function RecurringForm({
     : availableCategories[0]?.id ?? "";
 
   const numericAmount = Number(amount);
-  const numericInterval = Number(intervalDays);
   const isValid =
-    accountId !== "" &&
-    effectiveCategoryId !== "" &&
-    numericAmount > 0 &&
-    numericInterval >= 1 &&
-    startDate !== "" &&
-    (endDate === "" || endDate >= startDate);
+    accountId !== "" && effectiveCategoryId !== "" && numericAmount > 0 && startDate !== "";
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -73,12 +81,9 @@ export function RecurringForm({
       categoryId: effectiveCategoryId,
       accountId,
       amount: numericAmount,
-      recurrenceKind: initial?.recurrenceKind ?? "interval",
-      intervalDays: numericInterval,
       startDate,
-      endDate: endDate === "" ? null : endDate,
-      occurrenceCount: initial?.occurrenceCount ?? null,
-      description: description.trim()
+      description: description.trim(),
+      ...customRecurrenceToRuleFields(custom)
     });
   };
 
@@ -139,30 +144,6 @@ export function RecurringForm({
             </label>
           </div>
 
-          <label className="field">
-            <span>Повтор каждые (дней)</span>
-            <input
-              type="number"
-              min="1"
-              value={intervalDays}
-              onChange={(e) => setIntervalDays(e.target.value)}
-            />
-          </label>
-          <div className="fy-years">
-            {INTERVAL_PRESETS.map((preset) => (
-              <button
-                key={preset.days}
-                type="button"
-                className={
-                  numericInterval === preset.days ? "fy-year fy-year--active" : "fy-year"
-                }
-                onClick={() => setIntervalDays(String(preset.days))}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-
           <div className="op-form-grid">
             <label className="field">
               <span>Начало</span>
@@ -174,8 +155,15 @@ export function RecurringForm({
               />
             </label>
             <label className="field">
-              <span>Конец (необязательно)</span>
-              <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <span>Регулярность</span>
+              <button
+                type="button"
+                className="operation-recurrence-trigger"
+                onClick={() => setRecurrenceDialogOpen(true)}
+              >
+                <span>{customRecurrenceLabel(custom, startDate)}</span>
+                <ChevronDown size={16} aria-hidden="true" />
+              </button>
             </label>
           </div>
 
@@ -208,6 +196,18 @@ export function RecurringForm({
             </div>
           </div>
         </form>
+
+        {recurrenceDialogOpen && (
+          <RecurrenceCustomDialog
+            startDate={startDate}
+            initial={custom}
+            onCancel={() => setRecurrenceDialogOpen(false)}
+            onSubmit={(config) => {
+              setCustom(config);
+              setRecurrenceDialogOpen(false);
+            }}
+          />
+        )}
       </div>
     </div>
   );

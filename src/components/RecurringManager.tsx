@@ -11,19 +11,10 @@ import {
   upsertRecurringRule
 } from "../lib/repository";
 import { RecurringForm } from "./RecurringForm";
+import { customRecurrenceLabel, ruleToCustomRecurrence } from "./RecurrenceCustomDialog";
 
 function intervalLabel(rule: RecurringRule) {
-  if (rule.recurrenceKind === "daily") return "ежедневно";
-  if (rule.recurrenceKind === "weekly") return "еженедельно";
-  if (rule.recurrenceKind === "monthly") return "ежемесячно";
-  if (rule.recurrenceKind === "yearly") return "ежегодно";
-  if (rule.recurrenceKind === "weekdays") return "по будням";
-  const days = rule.intervalDays;
-  if (days === 7) return "каждую неделю";
-  if (days === 14) return "каждые 2 недели";
-  if (days === 365) return "раз в год";
-  if (days % 30 === 0 && days >= 30) return `каждые ${days / 30} мес.`;
-  return `каждые ${days} дн.`;
+  return customRecurrenceLabel(ruleToCustomRecurrence(rule, rule.startDate), rule.startDate);
 }
 
 export function RecurringManager() {

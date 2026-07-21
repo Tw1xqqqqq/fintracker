@@ -3,6 +3,7 @@ import type { Account, Category, Operation, RecurringRule, WeekPlan } from "../t
 import {
   aggregateWeeks,
   balanceSeries,
+  computeAccountBalances,
   computeExpectedBalance,
   computeWeeklyBalance,
   generateWeeks,
@@ -286,6 +287,76 @@ describe("переводы между счетами (без задвоения)
     const result = computeWeeklyBalance("2026-07-08", accounts, ops);
     expect(result.weeks[0].balance).toBe(1300); // только расход, ноги не считаются
     expect(computeExpectedBalance(accounts, ops, "2026-07-10")).toBe(1300);
+  });
+
+  it("перевод двигает остатки счетов, но общий итог не меняет", () => {
+    const balances = computeAccountBalances(accounts, legs);
+    const byId = Object.fromEntries(balances.map((b) => [b.account.id, b.balance]));
+    expect(byId.card).toBe(700); // 1000 − 300 (списание с источника)
+    expect(byId.cash).toBe(800); // 500 + 300 (зачисление на получатель)
+    // сумма по счетам = общий баланс = сумма стартовых
+    expect(balances.reduce((s, b) => s + b.balance, 0)).toBe(1500);
+  });
+});
+
+describe("computeAccountBalances", () => {
+  const accounts: Account[] = [
+    { id: "card", name: "Карта", type: "card", balance: 1000 },
+    { id: "cash", name: "Наличные", type: "cash", balance: 500 }
+  ];
+
+  function accOp(
+    id: string,
+    date: string,
+    type: Operation["type"],
+    amount: number,
+    accountId: string
+  ): Operation {
+    return {
+      id,
+      date,
+      type,
+      status: "actual",
+      categoryId: type === "transfer" ? null : "c",
+      accountId,
+      amount,
+      description: ""
+    };
+  }
+
+  it("доход и расход меняют остаток нужного счёта", () => {
+    const ops = [
+      accOp("i", "2026-07-01", "income", 2000, "card"),
+      accOp("e", "2026-07-02", "expense", 300, "cash")
+    ];
+    const byId = Object.fromEntries(
+      computeAccountBalances(accounts, ops).map((b) => [b.account.id, b.balance])
+    );
+    expect(byId.card).toBe(3000); // 1000 + 2000
+    expect(byId.cash).toBe(200); // 500 − 300
+  });
+
+  it("план и будущие (после asOfDate) операции не учитываются", () => {
+    const ops = [
+      accOp("planned", "2026-07-01", "expense", 999, "card"),
+      accOp("future", "2026-08-01", "expense", 100, "card")
+    ];
+    ops[0].status = "planned";
+    const byId = Object.fromEntries(
+      computeAccountBalances(accounts, ops, "2026-07-15").map((b) => [b.account.id, b.balance])
+    );
+    expect(byId.card).toBe(1000); // план и операция позже даты игнорируются
+  });
+
+  it("сумма остатков счетов равна computeExpectedBalance", () => {
+    const legs = transferLegs("t9", "2026-07-05", "card", "cash", 200);
+    const ops = [...legs, accOp("e", "2026-07-06", "expense", 150, "card")];
+    const total = computeAccountBalances(accounts, ops, "2026-07-31").reduce(
+      (s, b) => s + b.balance,
+      0
+    );
+    expect(total).toBe(computeExpectedBalance(accounts, ops, "2026-07-31"));
+    expect(total).toBe(1350); // 1500 − 150
   });
 });
 

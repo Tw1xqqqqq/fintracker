@@ -1,19 +1,16 @@
 import { computeWeeklyBalance } from "./finance";
 import type { WeeklyBalanceResult } from "./finance";
-import {
-  getSetting,
-  listAccounts,
-  listOperations
-} from "./repository";
+import { getSetting, listAccounts, listOperations } from "./repository";
 
-// Загружает счета, операции и дату старта из БД и считает недельную цепочку
-// баланса для дашборда (план — из planned-операций, включая регулярные).
-// Пур-часть — в computeWeeklyBalance.
+// Загружает счета, операции и границы финансового года (startDate/endDate) из
+// БД и считает недельную цепочку баланса для дашборда (план — из planned-
+// операций, включая регулярные). Пур-часть — в computeWeeklyBalance.
 export async function loadWeeklyBalance(): Promise<WeeklyBalanceResult> {
-  const [accounts, operations, startDate] = await Promise.all([
+  const [accounts, operations, startDate, endDate] = await Promise.all([
     listAccounts(),
     listOperations(),
-    getSetting("startDate")
+    getSetting("startDate"),
+    getSetting("endDate")
   ]);
-  return computeWeeklyBalance(startDate, accounts, operations);
+  return computeWeeklyBalance(startDate, accounts, operations, endDate);
 }

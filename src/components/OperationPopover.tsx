@@ -11,6 +11,7 @@ import type {
 import {
   RecurrenceCustomDialog,
   customRecurrenceLabel,
+  customRecurrenceToRuleFields,
   defaultCustomRecurrence
 } from "./RecurrenceCustomDialog";
 import type { CustomRecurrence } from "./RecurrenceCustomDialog";
@@ -179,15 +180,9 @@ export function OperationPopover({
           categoryId,
           accountId,
           amount: numericAmount,
-          recurrenceKind: "interval",
-          intervalDays: custom.count,
-          intervalUnit: custom.unit,
-          weekdays: custom.unit === "week" ? custom.weekdays : null,
-          monthlyMode: custom.unit === "month" ? custom.monthlyMode : null,
           startDate: date,
-          endDate: custom.endMode === "date" ? custom.endDate : null,
-          occurrenceCount: custom.endMode === "count" ? custom.repeatCount : null,
-          description: ""
+          description: "",
+          ...customRecurrenceToRuleFields(custom)
         };
       } else if (isRecurring) {
         const recurrenceKind: RecurrenceKind = recurrence as RecurrenceKind;

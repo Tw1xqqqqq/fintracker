@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
-import type { Account } from "../types";
-import { formatMoney } from "../lib/finance";
+import type { Account, Operation } from "../types";
+import { computeAccountBalances, formatMoney } from "../lib/finance";
 import {
   countOperationsForAccount,
   deleteAccount,
   listAccounts,
+  listOperations,
   upsertAccount
 } from "../lib/repository";
 import { AccountForm } from "./AccountForm";
@@ -25,6 +26,7 @@ type AccountsManagerProps = {
 
 export function AccountsManager({ filterType, title, description }: AccountsManagerProps = {}) {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [operations, setOperations] = useState<Operation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,11 +37,19 @@ export function AccountsManager({ filterType, title, description }: AccountsMana
     ? accounts.filter((account) => account.type === filterType)
     : accounts;
 
+  // Текущий остаток каждого счёта: стартовый баланс + фактические операции.
+  const currentBalances = useMemo(
+    () => new Map(computeAccountBalances(accounts, operations).map((b) => [b.account.id, b.balance])),
+    [accounts, operations]
+  );
+
   async function reload() {
     setLoading(true);
     setError(null);
     try {
-      setAccounts(await listAccounts());
+      const [accs, ops] = await Promise.all([listAccounts(), listOperations()]);
+      setAccounts(accs);
+      setOperations(ops);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -111,17 +121,28 @@ export function AccountsManager({ filterType, title, description }: AccountsMana
         <p className="cat-empty">В этом разделе пока нет счетов.</p>
       ) : (
         <ul className="acc-list">
-          {visibleAccounts.map((account) => (
-            <li key={account.id}>
-              <button type="button" className="acc-item" onClick={() => openEdit(account)}>
-                <span className="acc-info">
-                  <span className="acc-name">{account.name}</span>
-                  <span className="acc-type">{TYPE_LABELS[account.type]}</span>
-                </span>
-                <span className="acc-balance">{formatMoney(account.balance)}</span>
-              </button>
-            </li>
-          ))}
+          {visibleAccounts.map((account) => {
+            const current = currentBalances.get(account.id) ?? account.balance;
+            const changed = current !== account.balance;
+            return (
+              <li key={account.id}>
+                <button type="button" className="acc-item" onClick={() => openEdit(account)}>
+                  <span className="acc-info">
+                    <span className="acc-name">{account.name}</span>
+                    <span className="acc-type">{TYPE_LABELS[account.type]}</span>
+                  </span>
+                  <span className="acc-balance-wrap">
+                    <span className={current < 0 ? "acc-balance acc-balance--neg" : "acc-balance"}>
+                      {formatMoney(current)}
+                    </span>
+                    {changed && (
+                      <span className="acc-balance-sub">старт {formatMoney(account.balance)}</span>
+                    )}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
