@@ -5,14 +5,18 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Clock,
   Pencil,
   Plus,
-  Sparkles
+  Sparkles,
+  TriangleAlert
 } from "lucide-react";
 import type { Account, Category, Operation, RecurringRule } from "../types";
 import type { Week } from "../lib/finance";
 import {
+  confirmedOperationId,
   manualPlanAmountForTarget,
+  pendingRecurringOperations,
   suggestWeeklyAverages,
   sumAccountBalances
 } from "../lib/finance";
@@ -65,7 +69,15 @@ function manualPlanId(weekStart: string, categoryId: string) {
   return `manual-plan:${weekStart}:${categoryId}`;
 }
 
-type Mode = "plan" | "fact" | "diff";
+function pluralOperations(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} операция`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} операции`;
+  return `${count} операций`;
+}
+
+type Mode = "plan" | "fact";
 
 type BudgetTableProps = {
   weeks: Week[];
@@ -91,6 +103,12 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   });
   // revision форсит перемонтирование ячеек после массового заполнения средними
   const [revision, setRevision] = useState(0);
+
+  // Алерт о неподтверждённых регулярных операциях можно скрыть до перезагрузки данных.
+  const [alertDismissed, setAlertDismissed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  // Плавающий тултип (один на таблицу): текст + координаты якоря.
+  const [tip, setTip] = useState<{ text: string; x: number; y: number } | null>(null);
 
   const [formType, setFormType] = useState<Category["type"] | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -166,9 +184,9 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     return { totals, manual };
   }, [operations, weeks]);
 
-  // Факт по ячейкам: `${weekIdx}|${categoryId}` -> сумма фактических операций.
+  // Факт по ячейкам: `${weekIdx}|${categoryId}` -> сумма и число операций.
   const factByCell = useMemo(() => {
-    const map = new Map<string, number>();
+    const map = new Map<string, { sum: number; count: number }>();
     if (weeks.length === 0) return map;
     const firstMs = Date.parse(`${weeks[0].start}T00:00:00Z`);
     for (const op of operations) {
@@ -179,7 +197,10 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
       if (idx < 0 || idx >= weeks.length) continue;
       if (op.date < weeks[idx].start || op.date > weeks[idx].end) continue;
       const key = `${idx}|${op.categoryId}`;
-      map.set(key, (map.get(key) ?? 0) + op.amount);
+      const entry = map.get(key) ?? { sum: 0, count: 0 };
+      entry.sum += op.amount;
+      entry.count += 1;
+      map.set(key, entry);
     }
     return map;
   }, [operations, weeks]);
@@ -191,7 +212,12 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   );
 
   const factAt = useCallback(
-    (weekIdx: number, categoryId: string) => factByCell.get(`${weekIdx}|${categoryId}`) ?? 0,
+    (weekIdx: number, categoryId: string) => factByCell.get(`${weekIdx}|${categoryId}`)?.sum ?? 0,
+    [factByCell]
+  );
+
+  const factCountAt = useCallback(
+    (weekIdx: number, categoryId: string) => factByCell.get(`${weekIdx}|${categoryId}`)?.count ?? 0,
     [factByCell]
   );
 
@@ -232,6 +258,28 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   const weekHasFact = useMemo(
     () => weeks.map((_, i) => totals.factIncome[i] + totals.factExpense[i] > 0),
     [weeks, totals]
+  );
+
+  // Остаток на конец недели: факт, если неделя заполнена, иначе прогноз по плану.
+  const runningEffective = useMemo(
+    () => weeks.map((_, i) => (weekHasFact[i] ? totals.runningFact[i] : totals.runningPlan[i])),
+    [weeks, weekHasFact, totals]
+  );
+
+  // Кассовый разрыв — неделя, на конец которой остаток уходит в минус.
+  const cashGapWeeks = useMemo(() => runningEffective.map((value) => value < 0), [runningEffective]);
+
+  // Регулярные плановые операции текущей недели, ещё не внесённые в факт.
+  const pendingRecurring = useMemo(() => {
+    if (currentIdx < 0) return [];
+    const week = weeks[currentIdx];
+    return pendingRecurringOperations(operations, week.start, week.end);
+  }, [operations, weeks, currentIdx]);
+
+  // Ячейки текущей недели, ждущие подтверждения (для бейджа «Подтвердите»).
+  const pendingCells = useMemo(
+    () => new Set(pendingRecurring.map((operation) => `${currentIdx}|${operation.categoryId}`)),
+    [pendingRecurring, currentIdx]
   );
 
   const suggestions = useMemo(
@@ -278,6 +326,34 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     }
     setRevision((value) => value + 1);
   }, [defaultAccountId, categories, planAt, suggestions, weeks]);
+
+  // Вносит регулярные плановые операции текущей недели в факт.
+  // План остаётся на месте — появляется парный факт (модель план/факт).
+  const confirmPendingRecurring = async () => {
+    if (pendingRecurring.length === 0 || confirming) return;
+    setConfirming(true);
+    setError(null);
+    try {
+      for (const planned of pendingRecurring) {
+        if (!planned.categoryId) continue;
+        await upsertOperation({
+          id: confirmedOperationId(planned.id),
+          date: planned.date,
+          type: planned.type,
+          status: "actual",
+          categoryId: planned.categoryId,
+          accountId: planned.accountId,
+          amount: planned.amount,
+          description: planned.description
+        });
+      }
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const handleSaveCategory = async (category: Category) => {
     await upsertCategory(category);
@@ -413,29 +489,57 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
       );
     }
 
-    if (mode === "fact") {
-      const fact = factAt(globalIdx, category.id);
-      const plan = planAt(globalIdx, category.id);
-      return (
-        <button
-          type="button"
-          className="budget-entry-cell"
-          aria-label={`Добавить запись: ${category.name}, ${shortDate(weeks[globalIdx].start)}`}
-          onClick={() =>
-            setOperationContext({
-              categoryId: category.id,
-              date: weeks[globalIdx].start,
-              status: "actual"
-            })
-          }
-        >
-          {factWithDelta(fact, plan, category.type)}
-        </button>
-      );
-    }
+    const fact = factAt(globalIdx, category.id);
+    const plan = planAt(globalIdx, category.id);
+    const count = factCountAt(globalIdx, category.id);
+    const cellTip = factTooltip(fact, plan, count);
+    const isPending = pendingCells.has(`${globalIdx}|${category.id}`);
 
-    const diff = factAt(globalIdx, category.id) - planAt(globalIdx, category.id);
-    return diffNode(diff, category.type);
+    return (
+      <button
+        type="button"
+        className="budget-entry-cell"
+        onMouseEnter={(event) => showTip(event, cellTip)}
+        onMouseLeave={hideTip}
+        aria-label={`Добавить запись: ${category.name}, ${shortDate(weeks[globalIdx].start)}`}
+        onClick={() =>
+          setOperationContext({
+            categoryId: category.id,
+            date: weeks[globalIdx].start,
+            status: "actual"
+          })
+        }
+      >
+        {isPending ? (
+          <>
+            <span className="budget-confirm-badge">Подтвердите</span>
+            <span className="budget-ghost">{money(plan)}</span>
+          </>
+        ) : (
+          factWithDelta(fact, plan, category.type)
+        )}
+      </button>
+    );
+  };
+
+  const showTip = (event: React.MouseEvent<HTMLElement>, text: string | null) => {
+    if (!text) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    setTip({ text, x: rect.left + rect.width / 2, y: rect.top });
+  };
+  const hideTip = () => setTip(null);
+
+  // Подсказка по ячейке факта: факт, план, отклонение и число операций.
+  const factTooltip = (fact: number, plan: number, count: number): string | null => {
+    if (fact === 0 && plan === 0) return null;
+    const opsLine = count > 0 ? `\n${pluralOperations(count)}` : "";
+    if (fact === 0) return `План: ${money(plan)}\nФакта пока нет`;
+    if (fact === plan) return `План и факт совпали${opsLine}`;
+    const delta = fact - plan;
+    return (
+      `Факт: ${money(fact)}\nПлан: ${money(plan)}\n` +
+      `Отклонение: ${delta > 0 ? "+" : "−"}${money(Math.abs(delta))}${opsLine}`
+    );
   };
 
   // Факт-ячейка: сумма факта + дельта «к плану»; без факта — план серым.
@@ -466,24 +570,12 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     );
   };
 
-  const diffNode = (diff: number, type: Category["type"]) => {
-    if (diff === 0) return dash;
-    const good = type === "income" ? diff > 0 : diff < 0;
-    return (
-      <span className={good ? "amount amount--income" : "amount amount--expense"}>
-        {diff > 0 ? "+" : ""}
-        {money(diff)}
-      </span>
-    );
-  };
-
   // Итог группы за неделю в текущем режиме.
   const groupValue = (globalIdx: number, type: Category["type"]) => {
     const plan = (type === "income" ? totals.planIncome : totals.planExpense)[globalIdx];
     const fact = (type === "income" ? totals.factIncome : totals.factExpense)[globalIdx];
     if (mode === "plan") return numOrDashColored(plan, type);
-    if (mode === "fact") return factWithDelta(fact, plan, type);
-    return diffNode(fact - plan, type);
+    return factWithDelta(fact, plan, type);
   };
 
   const numOrDashColored = (value: number, type: Category["type"]) => {
@@ -501,48 +593,42 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     const netPlan = totals.planIncome[globalIdx] - totals.planExpense[globalIdx];
     const netFact = totals.factIncome[globalIdx] - totals.factExpense[globalIdx];
     if (mode === "plan") return netPlan ? money(netPlan) : dash;
-    if (mode === "fact") {
-      if (weekHasFact[globalIdx]) return money(netFact);
-      return netPlan ? <span className="budget-ghost">{money(netPlan)}</span> : dash;
-    }
-    const diff = netFact - netPlan;
-    return diff === 0 ? dash : (
-      <span className={diff > 0 ? "amount amount--income" : "amount amount--expense"}>
-        {diff > 0 ? "+" : ""}
-        {money(diff)}
-      </span>
-    );
+    if (weekHasFact[globalIdx]) return money(netFact);
+    return netPlan ? <span className="budget-ghost">{money(netPlan)}</span> : dash;
   };
 
   const runningValue = (globalIdx: number) => {
     if (mode === "plan") return money(totals.runningPlan[globalIdx]);
-    if (mode === "fact") {
-      // будущие недели без факта — ожидаемый остаток по плану, серым
-      if (!weekHasFact[globalIdx]) {
-        return <span className="budget-ghost">{money(totals.runningPlan[globalIdx])}</span>;
-      }
-      const delta = totals.runningFact[globalIdx] - totals.runningPlan[globalIdx];
+
+    const value = runningEffective[globalIdx];
+    const isGap = value < 0;
+    // Будущая неделя без факта — прогноз серым; но уход в минус выделяем всегда.
+    if (!weekHasFact[globalIdx]) {
       return (
-        <>
-          <span className="budget-cell-main">{money(totals.runningFact[globalIdx])}</span>
-          {deltaSub(delta, "balance")}
-        </>
+        <span className={isGap ? "amount amount--expense" : "budget-ghost"}>{money(value)}</span>
       );
     }
-    const diff = totals.runningFact[globalIdx] - totals.runningPlan[globalIdx];
-    return diff === 0 ? dash : (
-      <span className={diff > 0 ? "amount amount--income" : "amount amount--expense"}>
-        {diff > 0 ? "+" : ""}
-        {money(diff)}
-      </span>
+    const delta = totals.runningFact[globalIdx] - totals.runningPlan[globalIdx];
+    return (
+      <>
+        <span className={isGap ? "budget-cell-main amount--expense" : "budget-cell-main"}>
+          {money(value)}
+        </span>
+        {deltaSub(delta, "balance")}
+      </>
     );
   };
 
+  // Класс колонки: кассовый разрыв важнее подсветки текущей недели.
+  const weekColumnClass = (globalIdx: number) =>
+    cashGapWeeks[globalIdx]
+      ? "budget-col--gap"
+      : globalIdx === currentIdx
+        ? "budget-col--current"
+        : "";
+
   const weekTd = (globalIdx: number, content: React.ReactNode, extra = "") => (
-    <td
-      key={globalIdx}
-      className={`${globalIdx === currentIdx ? "budget-col--current" : ""} ${extra}`.trim()}
-    >
+    <td key={globalIdx} className={`${weekColumnClass(globalIdx)} ${extra}`.trim()}>
       {content}
     </td>
   );
@@ -564,8 +650,50 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     );
   }
 
+  const pendingTotal = pendingRecurring.reduce((sum, operation) => sum + operation.amount, 0);
+  const pendingNames = pendingRecurring
+    .map((operation) => categories.find((c) => c.id === operation.categoryId)?.name)
+    .filter((name): name is string => Boolean(name));
+
   return (
-    <div className="panel budget-panel">
+    <div className="budget-page">
+      {pendingRecurring.length > 0 && !alertDismissed && (
+        <div className="budget-alert" role="status">
+          <span className="budget-alert-icon">
+            <Clock size={18} />
+          </span>
+          <span className="budget-alert-text">
+            <span className="budget-alert-title">
+              {pendingRecurring.length}{" "}
+              {pendingRecurring.length === 1
+                ? "Регулярная операция ожидает подтверждение"
+                : "регулярных операций ожидают подтверждения"}
+            </span>
+            <span className="budget-alert-sub">
+              {pendingNames.join(", ")} · {money(pendingTotal)}
+            </span>
+          </span>
+          <span className="budget-alert-actions">
+            <button
+              type="button"
+              className="intro-secondary"
+              onClick={() => setAlertDismissed(true)}
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="intro-submit"
+              disabled={confirming}
+              onClick={() => void confirmPendingRecurring()}
+            >
+              {confirming ? "Подтверждение…" : "Подтвердить"}
+            </button>
+          </span>
+        </div>
+      )}
+
+      <div className="panel budget-panel">
       <div className="budget-toolbar">
         <div className="budget-toolbar-left">
           <span className="budget-title">Бюджет на год</span>
@@ -621,13 +749,6 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
             >
               Факт
             </button>
-            <button
-              type="button"
-              className={mode === "diff" ? "segmented--active" : ""}
-              onClick={() => setMode("diff")}
-            >
-              Сравнение
-            </button>
           </div>
 
           {mode === "plan" && (
@@ -672,24 +793,51 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
                 const globalIdx = pageStart + i;
                 const isCurrent = globalIdx === currentIdx;
                 const isFilled = weekHasFact[globalIdx];
+                const isGap = cashGapWeeks[globalIdx];
                 return (
                   <th
                     key={week.start}
                     className={
-                      isCurrent ? "budget-col--current" : isFilled ? "budget-col--filled" : ""
+                      isGap
+                        ? "budget-col--gap"
+                        : isCurrent
+                          ? "budget-col--current"
+                          : isFilled
+                            ? "budget-col--filled"
+                            : ""
                     }
                   >
                     <div className="budget-week-head">
                       <span className="budget-week-title">
                         Неделя {globalIdx + 1}
-                        {isFilled && !isCurrent && (
+                        {isGap ? (
                           <span
-                            className="budget-week-flag"
-                            title="Данные за неделю заполнены"
-                            aria-label="Данные за неделю заполнены"
+                            className="budget-week-flag budget-week-flag--gap"
+                            aria-label="Кассовый разрыв: на этой неделе баланс станет отрицательным"
+                            onMouseEnter={(event) =>
+                              showTip(
+                                event,
+                                "Кассовый разрыв\nНа этой неделе баланс станет отрицательным"
+                              )
+                            }
+                            onMouseLeave={hideTip}
                           >
-                            <CircleAlert size={12} />
+                            <TriangleAlert size={13} />
                           </span>
+                        ) : (
+                          isFilled &&
+                          !isCurrent && (
+                            <span
+                              className="budget-week-flag"
+                              aria-label="Данные за неделю заполнены"
+                              onMouseEnter={(event) =>
+                                showTip(event, "Данные за неделю заполнены")
+                              }
+                              onMouseLeave={hideTip}
+                            >
+                              <CircleAlert size={12} />
+                            </span>
+                          )
                         )}
                       </span>
                       <span className="budget-week-sub">
@@ -841,6 +989,13 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
           onCancel={() => setOperationContext(null)}
           onSave={handleSavePopover}
         />
+      )}
+      </div>
+
+      {tip && (
+        <div className="budget-tooltip" style={{ left: tip.x, top: tip.y }} role="tooltip">
+          {tip.text}
+        </div>
       )}
     </div>
   );

@@ -4,6 +4,8 @@ import {
   aggregateWeeks,
   balanceSeries,
   computeAccountBalances,
+  confirmedOperationId,
+  pendingRecurringOperations,
   computeExpectedBalance,
   computeWeeklyBalance,
   generateWeeks,
@@ -296,6 +298,48 @@ describe("переводы между счетами (без задвоения)
     expect(byId.cash).toBe(800); // 500 + 300 (зачисление на получатель)
     // сумма по счетам = общий баланс = сумма стартовых
     expect(balances.reduce((s, b) => s + b.balance, 0)).toBe(1500);
+  });
+});
+
+describe("pendingRecurringOperations", () => {
+  function recurringPlanned(id: string, date: string, amount: number): Operation {
+    return {
+      id,
+      date,
+      type: "expense",
+      status: "planned",
+      categoryId: "c",
+      accountId: "a",
+      amount,
+      description: "",
+      recurringId: "rule-1"
+    };
+  }
+
+  it("возвращает регулярные плановые операции недели, не внесённые в факт", () => {
+    const ops = [recurringPlanned("rec:rule-1:2026-07-22", "2026-07-22", 30000)];
+    const pending = pendingRecurringOperations(ops, "2026-07-20", "2026-07-26");
+    expect(pending.map((op) => op.id)).toEqual(["rec:rule-1:2026-07-22"]);
+  });
+
+  it("не возвращает уже подтверждённые", () => {
+    const planned = recurringPlanned("rec:rule-1:2026-07-22", "2026-07-22", 30000);
+    const confirmed: Operation = {
+      ...planned,
+      id: confirmedOperationId(planned.id),
+      status: "actual",
+      recurringId: null
+    };
+    expect(pendingRecurringOperations([planned, confirmed], "2026-07-20", "2026-07-26")).toEqual([]);
+  });
+
+  it("игнорирует нерегулярный план и операции вне диапазона", () => {
+    const manual: Operation = {
+      ...recurringPlanned("manual-plan:2026-07-22:c", "2026-07-22", 500),
+      recurringId: null
+    };
+    const outside = recurringPlanned("rec:rule-1:2026-08-05", "2026-08-05", 30000);
+    expect(pendingRecurringOperations([manual, outside], "2026-07-20", "2026-07-26")).toEqual([]);
   });
 });
 

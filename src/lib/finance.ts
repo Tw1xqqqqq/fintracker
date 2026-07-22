@@ -283,6 +283,31 @@ export function computeExpectedBalance(
   }, sumAccountBalances(accounts));
 }
 
+// Факт, созданный подтверждением регулярной плановой операции.
+// Детерминированный id — повторное подтверждение не создаёт дубль.
+export function confirmedOperationId(plannedId: string): string {
+  return `confirm:${plannedId}`;
+}
+
+// Плановые операции от регулярных правил в диапазоне дат, которые ещё не
+// внесены в факт (нет парной подтверждённой операции).
+export function pendingRecurringOperations(
+  operations: Operation[],
+  from: string,
+  to: string
+): Operation[] {
+  const existingIds = new Set(operations.map((operation) => operation.id));
+  return operations.filter(
+    (operation) =>
+      operation.status === "planned" &&
+      Boolean(operation.recurringId) &&
+      Boolean(operation.categoryId) &&
+      operation.date >= from &&
+      operation.date <= to &&
+      !existingIds.has(confirmedOperationId(operation.id))
+  );
+}
+
 export interface AccountBalance {
   account: Account;
   balance: number; // текущий остаток = стартовый баланс + факт-операции по счёту

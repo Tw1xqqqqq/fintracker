@@ -1607,6 +1607,102 @@ h1 {
   background: #fef9e7;
 }
 
+/* Кассовый разрыв: колонка целиком подсвечена розовым */
+.budget-col--gap {
+  background: #fef2f2;
+}
+
+.budget-row--group td.budget-col--gap,
+.budget-row--total td.budget-col--gap {
+  background: #fde8e8;
+}
+
+.budget-week-flag--gap {
+  color: var(--expense);
+}
+
+/* Страница бюджета: алерт над таблицей */
+.budget-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.budget-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #fcd34d;
+  border-radius: var(--radius);
+  background: #fffbeb;
+}
+
+.budget-alert-icon {
+  display: inline-flex;
+  color: var(--warn);
+  flex-shrink: 0;
+}
+
+.budget-alert-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.budget-alert-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.budget-alert-sub {
+  font-size: 13px;
+  color: var(--warn);
+}
+
+.budget-alert-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.budget-alert-actions .intro-submit {
+  margin-top: 0;
+}
+
+/* Бейдж «Подтвердите» в ячейке текущей недели */
+.budget-confirm-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Тёмный тултип. position: fixed — чтобы не обрезался скроллом таблицы
+   и overflow:hidden панели. Координаты считаются на hover в JS. */
+.budget-tooltip {
+  position: fixed;
+  z-index: 60;
+  transform: translate(-50%, calc(-100% - 10px));
+  max-width: 280px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #171717;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-line;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  pointer-events: none;
+}
+
 .budget-week-title {
   display: inline-flex;
   align-items: center;
@@ -1787,6 +1883,306 @@ h1 {
 .plan-cell-add:hover {
   background: var(--primary);
   color: var(--primary-fg);
+}
+
+/* Operations screen */
+.ops-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ops-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface);
+  color: var(--muted);
+  min-width: 240px;
+}
+
+.ops-search input {
+  border: 0;
+  background: transparent;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--text);
+  width: 100%;
+}
+
+.ops-search input:focus {
+  outline: none;
+}
+
+.ops-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ops-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.ops-filter select {
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ops-filter select:focus {
+  outline: none;
+}
+
+.ops-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  padding: 16px;
+}
+
+.ops-stat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  background: var(--surface);
+}
+
+.ops-stat-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ops-stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-stat-icon {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+}
+
+.ops-stat-icon--income {
+  background: rgba(5, 150, 105, 0.12);
+  color: var(--income);
+}
+
+.ops-stat-icon--expense,
+.ops-stat-icon--net {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--expense);
+}
+
+.ops-error {
+  padding: 0 16px;
+}
+
+.ops-empty {
+  margin: 0;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.ops-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-day-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.ops-day-date {
+  font-size: 13px;
+  font-weight: 500;
+  flex: 1;
+}
+
+.ops-day-total {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ops-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ops-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+}
+
+.ops-row:hover {
+  background: var(--accent);
+}
+
+.ops-row-icon {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.ops-row-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ops-row-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.ops-row-recurring {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.ops-row-sub {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-row-amount {
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ops-row-badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.ops-row-badge-space {
+  width: 0;
+}
+
+.ops-row-menu {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.ops-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+
+.ops-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.ops-menu button {
+  border: 0;
+  background: transparent;
+  padding: 7px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.ops-menu button:hover {
+  background: var(--accent);
+}
+
+.ops-menu-danger {
+  color: var(--expense);
+}
+
+.ops-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.ops-footer-total {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .ops-stats {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Import screen */

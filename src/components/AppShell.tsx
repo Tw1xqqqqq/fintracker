@@ -2,32 +2,26 @@ import { useState } from "react";
 import {
   ArrowLeftRight,
   ChartColumn,
-  ChartPie,
   CircleDollarSign,
   CreditCard,
   FileUp,
   Landmark,
   PiggyBank,
   Plus,
-  Scale,
   Settings
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { OperationsJournal } from "./OperationsJournal";
-import { Dashboard } from "./Dashboard";
 import { Plan } from "./Plan";
 import { CategoriesManager } from "./CategoriesManager";
 import { AccountsManager } from "./AccountsManager";
 import { AccountingSettings } from "./AccountingSettings";
 import { RecurringManager } from "./RecurringManager";
-import { BalanceReconciliation } from "./BalanceReconciliation";
 import { ImportScreen } from "./ImportScreen";
 
 type SectionId =
-  | "dashboard"
   | "operations"
   | "plan"
-  | "reconciliation"
   | "card"
   | "deposit"
   | "credit"
@@ -43,9 +37,7 @@ type NavItem = {
 // Группы навигации по компонентам макета (Sidebar Group Label + Sidebar Item).
 const MAIN_ITEMS: NavItem[] = [
   { id: "plan", label: "Бюджет", icon: ChartColumn },
-  { id: "operations", label: "Операции", icon: ArrowLeftRight },
-  { id: "reconciliation", label: "Сверка", icon: Scale },
-  { id: "dashboard", label: "Аналитика", icon: ChartPie }
+  { id: "operations", label: "Операции", icon: ArrowLeftRight }
 ];
 
 const ACCOUNT_ITEMS: NavItem[] = [
@@ -148,20 +140,12 @@ type SectionProps = {
 };
 
 function Section({ id, onChanged }: SectionProps) {
-  if (id === "dashboard") {
-    return <Dashboard />;
-  }
-
   if (id === "operations") {
     return <OperationsJournal />;
   }
 
   if (id === "plan") {
     return <Plan />;
-  }
-
-  if (id === "reconciliation") {
-    return <BalanceReconciliation />;
   }
 
   if (id === "card") {
