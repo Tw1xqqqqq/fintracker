@@ -1,10 +1,22 @@
 import { ChangeEvent, useEffect, useMemo, useState } from "react";
-import { CircleCheck, FileUp, Upload } from "lucide-react";
+import { CircleCheck, Download, FileUp, Upload } from "lucide-react";
 import type { Account, Category } from "../types";
 import type { ColumnMapping, ImportRow } from "../lib/csvImport";
-import { buildImportRows, decodeCsvBuffer, guessColumns, parseCsv } from "../lib/csvImport";
+import {
+  buildImportRows,
+  buildOperationsCsv,
+  decodeCsvBuffer,
+  guessColumns,
+  parseCsv
+} from "../lib/csvImport";
 import { formatMoney } from "../lib/finance";
-import { getSetting, listAccounts, listCategories, upsertOperation } from "../lib/repository";
+import {
+  getSetting,
+  listAccounts,
+  listCategories,
+  listOperations,
+  upsertOperation
+} from "../lib/repository";
 
 function shortDate(iso: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -33,6 +45,7 @@ export function ImportScreen() {
   const [skipped, setSkipped] = useState(0);
   const [saving, setSaving] = useState(false);
   const [importedCount, setImportedCount] = useState<number | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -127,6 +140,49 @@ export function ImportScreen() {
     }
   };
 
+  // Экспорт журнала в CSV: диалог сохранения (File System Access API в WebView2),
+  // при его отсутствии — копия в буфер обмена.
+  const handleExport = async () => {
+    setExportMessage(null);
+    setError(null);
+    try {
+      const [ops, cats] = await Promise.all([listOperations(), listCategories()]);
+      if (ops.length === 0) {
+        setExportMessage("Операций пока нет — экспортировать нечего.");
+        return;
+      }
+      const csv = buildOperationsCsv(ops, cats, accounts);
+      const picker = (
+        window as unknown as {
+          showSaveFilePicker?: (options: unknown) => Promise<{
+            createWritable: () => Promise<{
+              write: (data: Blob) => Promise<void>;
+              close: () => Promise<void>;
+            }>;
+          }>;
+        }
+      ).showSaveFilePicker;
+
+      if (picker) {
+        const handle = await picker({
+          suggestedName: `fintracker-operations-${new Date().toISOString().slice(0, 10)}.csv`,
+          types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+        await writable.close();
+        setExportMessage("Файл сохранён.");
+      } else {
+        await navigator.clipboard.writeText(csv);
+        setExportMessage("Диалог сохранения недоступен — CSV скопирован в буфер обмена.");
+      }
+    } catch (err) {
+      // отмена диалога пользователем — не ошибка
+      if (err instanceof DOMException && err.name === "AbortError") return;
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   if (loading) {
     return <div className="panel panel--empty">Загрузка…</div>;
   }
@@ -164,6 +220,15 @@ export function ImportScreen() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="intro-secondary"
+            title="Выгрузить журнал операций в CSV"
+            onClick={() => void handleExport()}
+          >
+            <Download size={16} />
+            Экспорт CSV
+          </button>
           <label className="intro-secondary import-file-button">
             <Upload size={16} />
             Выбрать CSV-файл
@@ -174,6 +239,13 @@ export function ImportScreen() {
 
       <div className="import-body">
         {error && <p className="error-text">{error}</p>}
+
+        {exportMessage && (
+          <p className="import-success">
+            <CircleCheck size={16} />
+            {exportMessage}
+          </p>
+        )}
 
         {importedCount !== null && (
           <p className="import-success">

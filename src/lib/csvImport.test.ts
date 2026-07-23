@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Category } from "../types";
+import type { Account, Category, Operation } from "../types";
 import {
   buildImportRows,
+  buildOperationsCsv,
   decodeCsvBuffer,
   detectDelimiter,
   guessColumns,
@@ -127,5 +128,79 @@ describe("buildImportRows", () => {
     const { rows: built, skipped } = buildImportRows(rows, { date: 0, amount: 1, description: 2, hasHeader: true }, []);
     expect(built).toHaveLength(0);
     expect(skipped).toBe(1);
+  });
+});
+
+describe("buildOperationsCsv", () => {
+  const categories: Category[] = [{ id: "food", name: "Продукты", type: "expense", color: "#000" }];
+  const accounts: Account[] = [
+    { id: "card", name: "Карта", type: "card", balance: 0 },
+    { id: "cash", name: "Наличные", type: "cash", balance: 0 }
+  ];
+
+  function operation(overrides: Partial<Operation>): Operation {
+    return {
+      id: "op",
+      date: "2026-07-20",
+      type: "expense",
+      status: "actual",
+      categoryId: "food",
+      accountId: "card",
+      amount: 500,
+      description: "",
+      ...overrides
+    };
+  }
+
+  it("выгружает шапку и строки, расход со знаком минус, кавычки экранируются", () => {
+    const csv = buildOperationsCsv(
+      [operation({ id: "e1", description: 'Кафе "У дома"; ул. Мира' })],
+      categories,
+      accounts
+    );
+    const lines = csv.trim().split("\n");
+    expect(lines[0]).toContain("Дата;Тип;Статус;Категория;Счёт;Сумма;Комментарий");
+    expect(lines[1]).toBe('2026-07-20;Расход;Факт;Продукты;Карта;-500;"Кафе ""У дома""; ул. Мира"');
+  });
+
+  it("перевод — одной строкой с маршрутом счётов", () => {
+    const legs: Operation[] = [
+      operation({
+        id: "t:out",
+        type: "transfer",
+        categoryId: null,
+        accountId: "card",
+        sourceAccountId: "card",
+        targetAccountId: "cash",
+        amount: 300,
+        transferId: "t"
+      }),
+      operation({
+        id: "t:in",
+        type: "transfer",
+        categoryId: null,
+        accountId: "cash",
+        sourceAccountId: "card",
+        targetAccountId: "cash",
+        amount: 300,
+        transferId: "t"
+      })
+    ];
+    const csv = buildOperationsCsv(legs, categories, accounts);
+    const lines = csv.trim().split("\n");
+    expect(lines).toHaveLength(2); // шапка + одна строка (нога :in не дублируется)
+    expect(lines[1]).toContain("Перевод");
+    expect(lines[1]).toContain("Карта → Наличные");
+  });
+
+  it("сортирует по дате по возрастанию", () => {
+    const csv = buildOperationsCsv(
+      [operation({ id: "b", date: "2026-07-22" }), operation({ id: "a", date: "2026-07-20" })],
+      categories,
+      accounts
+    );
+    const lines = csv.trim().split("\n");
+    expect(lines[1]).toContain("2026-07-20");
+    expect(lines[2]).toContain("2026-07-22");
   });
 });

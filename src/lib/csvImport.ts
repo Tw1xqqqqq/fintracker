@@ -1,4 +1,4 @@
-import type { Category } from "../types";
+import type { Account, Category, Operation } from "../types";
 
 // --- Декодирование файла: utf-8, при мусоре пробуем windows-1251 (банки её любят).
 export function decodeCsvBuffer(buffer: ArrayBuffer): string {
@@ -266,4 +266,54 @@ export function buildImportRows(
   }
 
   return { rows: result, skipped };
+}
+
+// --- Экспорт журнала операций в CSV (разделитель «;», для Excel).
+// Переводы выгружаются одной строкой (нога списания) с маршрутом «A → B».
+const TYPE_LABELS: Record<Operation["type"], string> = {
+  income: "Доход",
+  expense: "Расход",
+  transfer: "Перевод"
+};
+
+function csvField(value: string): string {
+  return /[";\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+}
+
+export function buildOperationsCsv(
+  operations: Operation[],
+  categories: Category[],
+  accounts: Account[]
+): string {
+  const categoryById = new Map(categories.map((category) => [category.id, category.name]));
+  const accountById = new Map(accounts.map((account) => [account.id, account.name]));
+
+  const rows = operations
+    .filter((op) => op.type !== "transfer" || op.accountId === op.sourceAccountId)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .map((op) => {
+      const category =
+        op.type === "transfer" ? "Перевод" : (op.categoryId && categoryById.get(op.categoryId)) || "";
+      const account =
+        op.type === "transfer"
+          ? `${accountById.get(op.sourceAccountId ?? "") ?? "—"} → ${
+              accountById.get(op.targetAccountId ?? "") ?? "—"
+            }`
+          : accountById.get(op.accountId) ?? "";
+      const signed = op.type === "expense" ? -op.amount : op.amount;
+      return [
+        op.date,
+        TYPE_LABELS[op.type],
+        op.status === "planned" ? "План" : "Факт",
+        category,
+        account,
+        String(signed),
+        op.description
+      ]
+        .map(csvField)
+        .join(";");
+    });
+
+  // BOM — чтобы Excel открыл кириллицу в UTF-8 без танцев.
+  return `﻿Дата;Тип;Статус;Категория;Счёт;Сумма;Комментарий\n${rows.join("\n")}\n`;
 }
