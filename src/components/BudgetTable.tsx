@@ -15,7 +15,6 @@ import type { Account, Category, Operation, RecurringRule } from "../types";
 import type { Week } from "../lib/finance";
 import {
   confirmedOperationId,
-  manualPlanAmountForTarget,
   pendingRecurringOperations,
   suggestWeeklyAverages,
   sumAccountBalances
@@ -23,7 +22,6 @@ import {
 import {
   countOperationsForCategory,
   deleteCategory,
-  deleteOperation,
   getSetting,
   listAccounts,
   listCategories,
@@ -39,8 +37,6 @@ import { OperationPopover } from "./OperationPopover";
 
 const PAGE_SIZE = 6;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-const fmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 
 // Суммы в таблице — без группировки и с «₽», как в макете (35000₽).
 const fmtPlain = new Intl.NumberFormat("ru-RU", {
@@ -101,9 +97,6 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     income: false,
     expense: false
   });
-  // revision форсит перемонтирование ячеек после массового заполнения средними
-  const [revision, setRevision] = useState(0);
-
   // Алерт о неподтверждённых регулярных операциях можно скрыть до перезагрузки данных.
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -324,7 +317,6 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-    setRevision((value) => value + 1);
   }, [defaultAccountId, categories, planAt, suggestions, weeks]);
 
   // Вносит регулярные плановые операции текущей недели в факт.
@@ -391,101 +383,26 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     }
   };
 
-  const handleSavePlan = async (weekStart: string, categoryId: string, rawValue: string) => {
-    const targetAmount = rawValue.trim() === "" ? 0 : Number(rawValue);
-    if (!Number.isFinite(targetAmount) || targetAmount < 0) {
-      setError("Плановая сумма должна быть неотрицательным числом.");
-      setRevision((value) => value + 1);
-      return;
-    }
-
-    const key = planKey(weekStart, categoryId);
-    const totalAmount = plannedByCell.totals.get(key) ?? 0;
-    const currentManualAmount = plannedByCell.manual.get(key) ?? 0;
-    const recurringAmount = totalAmount - currentManualAmount;
-    const manualAmount = manualPlanAmountForTarget(
-      targetAmount,
-      totalAmount,
-      currentManualAmount
-    );
-    if (manualAmount === null) {
-      setError(
-        `В этой неделе уже есть отдельные плановые записи (регулярные или добавленные через «+») ` +
-          `на ${fmt.format(recurringAmount)} ₽. Чтобы опустить сумму ниже, измените или удалите их.`
-      );
-      setRevision((value) => value + 1);
-      return;
-    }
-
-    const category = categories.find((item) => item.id === categoryId);
-    const accountId = defaultAccountId;
-    if (!category || !accountId) {
-      setError("Для планирования нужны категория и хотя бы один счёт.");
-      return;
-    }
-
-    const id = manualPlanId(weekStart, categoryId);
-    setError(null);
-    try {
-      if (manualAmount === 0) {
-        await deleteOperation(id);
-      } else {
-        await upsertOperation({
-          id,
-          date: weekStart,
-          type: category.type,
-          status: "planned",
-          categoryId,
-          accountId,
-          amount: manualAmount,
-          description: "Ручной план"
-        });
-      }
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      await load();
-    }
-  };
-
   const pageWeeks = weeks.slice(pageStart, pageStart + PAGE_SIZE);
 
   const dash = <span className="budget-dash">—</span>;
 
-  const numOrDash = (value: number) => (value ? fmt.format(value) : dash);
-
-  // Ячейка статьи по режиму: план — редактируемая, факт — число, сравнение — дельта.
+  // Ячейка статьи: и в плане, и в факте — клик открывает поповер добавления записи.
   const catCell = (category: Category, globalIdx: number) => {
     if (mode === "plan") {
       const value = planAt(globalIdx, category.id);
       const weekStart = weeks[globalIdx].start;
       return (
-        <span className="plan-cell-wrap" key={`${planKey(weekStart, category.id)}:${value}:${revision}`}>
-          <button
-            type="button"
-            className="plan-cell-add"
-            aria-label={`Добавить плановую запись: ${category.name}, ${shortDate(weekStart)}`}
-            title="Добавить плановую запись (с регулярностью)"
-            onClick={() =>
-              setOperationContext({ categoryId: category.id, date: weekStart, status: "planned" })
-            }
-          >
-            <Plus size={12} />
-          </button>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            className="plan-cell"
-            aria-label={`План: ${category.name}, ${shortDate(weekStart)}`}
-            defaultValue={value || ""}
-            placeholder="—"
-            onBlur={(event) => void handleSavePlan(weekStart, category.id, event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.currentTarget.blur();
-            }}
-          />
-        </span>
+        <button
+          type="button"
+          className="budget-entry-cell"
+          aria-label={`Добавить плановую запись: ${category.name}, ${shortDate(weekStart)}`}
+          onClick={() =>
+            setOperationContext({ categoryId: category.id, date: weekStart, status: "planned" })
+          }
+        >
+          {value ? money(value) : dash}
+        </button>
       );
     }
 

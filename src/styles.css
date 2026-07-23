@@ -1803,34 +1803,6 @@ h1 {
   font-size: 14px;
 }
 
-.plan-cell {
-  width: 100%;
-  min-width: 72px;
-  box-sizing: border-box;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 4px 6px;
-  text-align: right;
-  background: transparent;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.plan-cell::placeholder {
-  color: #c2cbd4;
-}
-
-.plan-cell:hover {
-  border-color: var(--line);
-}
-
-.plan-cell:focus {
-  outline: none;
-  border-color: var(--blue);
-  background: #ffffff;
-  box-shadow: 0 0 0 2px var(--ring);
-}
-
 @media (max-width: 900px) {
   .stat-cards {
     grid-template-columns: repeat(2, 1fr);
@@ -1847,42 +1819,6 @@ h1 {
   .cat-groups {
     grid-template-columns: 1fr;
   }
-}
-
-/* Кнопка добавления плановой записи в ячейке плана */
-.plan-cell-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-}
-
-.plan-cell-add {
-  position: absolute;
-  left: 2px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  border-radius: 4px;
-  background: var(--accent);
-  color: var(--muted);
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
-}
-
-.plan-cell-wrap:hover .plan-cell-add,
-.plan-cell-wrap:focus-within .plan-cell-add {
-  opacity: 1;
-}
-
-.plan-cell-add:hover {
-  background: var(--primary);
-  color: var(--primary-fg);
 }
 
 /* Operations screen */
