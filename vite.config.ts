@@ -6,7 +6,11 @@ export default defineConfig({
   clearScreen: false,
   server: {
     port: 1420,
-    strictPort: true
+    strictPort: true,
+    // Rust-часть пересобирает сам Tauri; без исключения Vite ловит EBUSY на target/
+    watch: {
+      ignored: ["**/src-tauri/**"]
+    }
   },
   envPrefix: ["VITE_", "TAURI_"],
   build: {
