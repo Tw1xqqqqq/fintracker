@@ -14,6 +14,7 @@ import {
 import type { Account, Category, Operation, RecurringRule } from "../types";
 import type { Week } from "../lib/finance";
 import {
+  budgetBalances,
   confirmedOperationId,
   pendingRecurringOperations,
   suggestWeeklyAverages,
@@ -225,19 +226,26 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
       }
     }
 
-    const runningPlan = new Array<number>(n).fill(0);
-    const runningFact = new Array<number>(n).fill(0);
-    let accPlan = initialBalance;
-    let accFact = initialBalance;
-    for (let i = 0; i < n; i += 1) {
-      accPlan += planIncome[i] - planExpense[i];
-      accFact += factIncome[i] - factExpense[i];
-      runningPlan[i] = accPlan;
-      runningFact[i] = accFact;
-    }
+    const balances = budgetBalances(
+      initialBalance,
+      weeks.map((week, i) => ({
+        weekStart: week.start,
+        incomePlan: planIncome[i],
+        expensePlan: planExpense[i],
+        incomeActual: factIncome[i],
+        expenseActual: factExpense[i]
+      }))
+    );
 
-    return { planIncome, planExpense, factIncome, factExpense, runningPlan, runningFact };
-  }, [weeks.length, incomeCats, expenseCats, planAt, factAt, initialBalance]);
+    return {
+      planIncome,
+      planExpense,
+      factIncome,
+      factExpense,
+      runningPlan: balances.plan,
+      runningEffective: balances.effective
+    };
+  }, [weeks, incomeCats, expenseCats, planAt, factAt, initialBalance]);
 
   // «Данные за неделю заполнены» — по неделе есть хотя бы один факт.
   const weekHasFact = useMemo(
@@ -245,11 +253,9 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     [weeks, totals]
   );
 
-  // Остаток на конец недели: факт, если неделя заполнена, иначе прогноз по плану.
-  const runningEffective = useMemo(
-    () => weeks.map((_, i) => (weekHasFact[i] ? totals.runningFact[i] : totals.runningPlan[i])),
-    [weeks, weekHasFact, totals]
-  );
+  // Остаток на конец недели: факт, если неделя заполнена, иначе прогноз по
+  // плану — от остатка предыдущей недели (с учётом её факта).
+  const runningEffective = totals.runningEffective;
 
   // Кассовый разрыв — неделя, на конец которой остаток уходит в минус.
   const cashGapWeeks = useMemo(() => runningEffective.map((value) => value < 0), [runningEffective]);
@@ -517,7 +523,7 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
         <span className={isGap ? "amount amount--expense" : "budget-ghost"}>{money(value)}</span>
       );
     }
-    const delta = totals.runningFact[globalIdx] - totals.runningPlan[globalIdx];
+    const delta = value - totals.runningPlan[globalIdx];
     return (
       <>
         <span className={isGap ? "budget-cell-main amount--expense" : "budget-cell-main"}>

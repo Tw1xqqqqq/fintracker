@@ -79,6 +79,25 @@ export function balanceSeries(initialBalance: number, weeks: WeekPlan[]): WeekBa
   });
 }
 
+export interface BudgetBalances {
+  plan: number[]; // накопленный остаток только по плану (режим «План»)
+  effective: number[]; // факт, где он есть, иначе план — от остатка прошлой недели
+}
+
+// Ряды «Итогового баланса» для таблицы бюджета. Прогноз недели без факта
+// считается от фактического остатка предыдущей недели (цепочка balanceSeries),
+// а не от чисто плановой цепочки — иначе после недель с фактом прогноз
+// «забывал» реальные доходы и расходы.
+export function budgetBalances(initialBalance: number, weeks: WeekPlan[]): BudgetBalances {
+  let running = initialBalance;
+  const plan = weeks.map((week) => {
+    running += week.incomePlan - week.expensePlan;
+    return running;
+  });
+  const effective = balanceSeries(initialBalance, weeks).map((week) => week.balance);
+  return { plan, effective };
+}
+
 export interface Week {
   index: number; // порядковый номер недели, с 0
   start: string; // дата начала недели, ISO yyyy-mm-dd
