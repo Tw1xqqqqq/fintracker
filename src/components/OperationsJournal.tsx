@@ -43,15 +43,7 @@ import {
   upsertOperation
 } from "../lib/repository";
 import { OperationForm } from "./OperationForm";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function shortDate(iso: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return match ? `${match[3]}.${match[2]}` : iso;
-}
+import { shortDate, todayIso } from "../lib/dates";
 
 // «23 июля»
 function dayLabel(iso: string) {

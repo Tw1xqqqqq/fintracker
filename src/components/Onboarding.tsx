@@ -1,14 +1,11 @@
 import { ArrowRight, CircleDollarSign } from "lucide-react";
 import { FormEvent, useState } from "react";
+import { todayIso } from "../lib/dates";
 
 export type SetupData = {
   accountName: string;
   startDate: string;
 };
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
 
 type OnboardingProps = {
   onComplete: (data: SetupData) => void;

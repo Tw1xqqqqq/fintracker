@@ -1,12 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import type { Account } from "../types";
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `acc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { newId } from "../lib/dates";
 
 type AccountFormProps = {
   initial: Account | null;
@@ -29,7 +24,7 @@ export function AccountForm({ initial, defaultType, error, onSave, onDelete, onC
     event.preventDefault();
     if (!isValid) return;
     onSave({
-      id: initial?.id ?? newId(),
+      id: initial?.id ?? newId("acc"),
       name: name.trim(),
       type,
       balance: numericBalance

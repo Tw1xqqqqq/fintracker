@@ -9,16 +9,7 @@ import {
   ruleToCustomRecurrence
 } from "./RecurrenceCustomDialog";
 import type { CustomRecurrence } from "./RecurrenceCustomDialog";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `rec-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { newId, todayIso } from "../lib/dates";
 
 function addMonths(iso: string, months: number) {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -76,7 +67,7 @@ export function RecurringForm({
     event.preventDefault();
     if (!isValid) return;
     onSave({
-      id: initial?.id ?? newId(),
+      id: initial?.id ?? newId("rec"),
       type,
       categoryId: effectiveCategoryId,
       accountId,
