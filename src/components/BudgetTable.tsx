@@ -34,6 +34,7 @@ import {
 } from "../lib/repository";
 import { CategoryForm } from "./CategoryForm";
 import { OperationPopover } from "./OperationPopover";
+import { shortDate, todayIso } from "../lib/dates";
 
 const PAGE_SIZE = 6;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -46,15 +47,6 @@ const fmtPlain = new Intl.NumberFormat("ru-RU", {
 
 function money(value: number): string {
   return `${fmtPlain.format(value)}₽`;
-}
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function shortDate(iso: string) {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
-  return match ? `${match[3]}.${match[2]}` : iso;
 }
 
 function planKey(weekStart: string, categoryId: string) {

@@ -1,12 +1,7 @@
 import { FormEvent, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import type { Category } from "../types";
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `cat-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { newId } from "../lib/dates";
 
 type CategoryFormProps = {
   initial: Category | null;
@@ -35,7 +30,7 @@ export function CategoryForm({
     event.preventDefault();
     if (!isValid) return;
     onSave({
-      id: initial?.id ?? newId(),
+      id: initial?.id ?? newId("cat"),
       name: name.trim(),
       type,
       color

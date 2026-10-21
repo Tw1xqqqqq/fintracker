@@ -2,17 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { generateWeeks } from "../lib/finance";
 import { getSetting, regenerateRecurringOperations, setSetting } from "../lib/repository";
 import { BudgetTable } from "./BudgetTable";
-
-function formatDate(iso: string) {
-  if (!iso) return "—";
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return iso;
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric"
-  }).format(parsed);
-}
+import { formatLongDate } from "../lib/dates";
 
 const CURRENT_YEAR = new Date().getFullYear();
 const YEARS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1, CURRENT_YEAR + 2];
@@ -157,8 +147,8 @@ export function Plan() {
         {valid ? (
           <span>
             Сгенерировано недель: <strong>{weeks.length}</strong> · с{" "}
-            <strong>{formatDate(weeks[0]?.start ?? startDate)}</strong> по{" "}
-            <strong>{formatDate(weeks[weeks.length - 1]?.end ?? endDate)}</strong>
+            <strong>{formatLongDate(weeks[0]?.start ?? startDate)}</strong> по{" "}
+            <strong>{formatLongDate(weeks[weeks.length - 1]?.end ?? endDate)}</strong>
           </span>
         ) : (
           <span>Выберите год или задайте даты начала и конца.</span>

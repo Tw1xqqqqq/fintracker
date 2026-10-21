@@ -2,17 +2,7 @@ import { useEffect, useState } from "react";
 import { Pencil } from "lucide-react";
 import type { Account } from "../types";
 import { getSetting, listAccounts, setSetting } from "../lib/repository";
-
-function formatDate(iso: string) {
-  if (!iso) return "—";
-  const parsed = new Date(iso);
-  if (Number.isNaN(parsed.getTime())) return "—";
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: "numeric"
-  }).format(parsed);
-}
+import { formatLongDate } from "../lib/dates";
 
 type AccountingSettingsProps = {
   onChanged: () => void;
@@ -132,7 +122,7 @@ export function AccountingSettings({ onChanged }: AccountingSettingsProps) {
           </div>
           <div>
             <dt>Начало учёта</dt>
-            <dd>{formatDate(startDate)}</dd>
+            <dd>{formatLongDate(startDate)}</dd>
           </div>
         </dl>
       )}
