@@ -9,6 +9,7 @@ import {
   setSetting,
   upsertAccount
 } from "./lib/repository";
+import { newId } from "./lib/dates";
 
 export type AppState = {
   accountName: string;
@@ -20,12 +21,6 @@ type Status =
   | { kind: "onboarding" }
   | { kind: "ready"; state: AppState }
   | { kind: "error"; message: string };
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `acc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
 
 export function App() {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
@@ -51,7 +46,7 @@ export function App() {
   }, []);
 
   const handleComplete = async (data: SetupData) => {
-    const id = newId();
+    const id = newId("acc");
     await upsertAccount({ id, name: data.accountName, type: "card", balance: 0 });
     await setSetting("primaryAccountId", id);
     await setSetting("startDate", data.startDate);

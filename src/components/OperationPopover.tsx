@@ -15,16 +15,7 @@ import {
   defaultCustomRecurrence
 } from "./RecurrenceCustomDialog";
 import type { CustomRecurrence } from "./RecurrenceCustomDialog";
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `op-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { newId, todayIso } from "../lib/dates";
 
 function addMonths(iso: string, months: number) {
   const date = new Date(`${iso}T00:00:00Z`);
@@ -162,7 +153,7 @@ export function OperationPopover({
     setSaving(true);
     try {
       const operation: Operation = {
-        id: newId(),
+        id: newId("op"),
         amount: numericAmount,
         type: category.type,
         status,
@@ -175,7 +166,7 @@ export function OperationPopover({
       let recurringRule: RecurringRule | null = null;
       if (recurrence === "custom" && custom) {
         recurringRule = {
-          id: newId(),
+          id: newId("op"),
           type: category.type,
           categoryId,
           accountId,
@@ -195,7 +186,7 @@ export function OperationPopover({
                 ? 30
                 : 365;
         recurringRule = {
-          id: newId(),
+          id: newId("op"),
           type: category.type,
           categoryId,
           accountId,

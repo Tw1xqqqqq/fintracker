@@ -10,16 +10,7 @@ import {
   saveReconciliation,
   upsertOperation
 } from "../lib/repository";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `recon-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { newId, todayIso } from "../lib/dates";
 
 function formatDate(iso: string) {
   const parsed = new Date(iso);
@@ -86,7 +77,7 @@ export function BalanceReconciliation() {
         const categoryId = await ensureAdjustmentCategory(type);
         const primaryId = await getSetting("primaryAccountId");
         const account = accounts.find((a) => a.id === primaryId) ?? accounts[0];
-        operationId = newId();
+        operationId = newId("recon");
         await upsertOperation({
           id: operationId,
           date: today,
@@ -100,7 +91,7 @@ export function BalanceReconciliation() {
       }
 
       await saveReconciliation({
-        id: newId(),
+        id: newId("recon"),
         date: today,
         expected,
         actual,

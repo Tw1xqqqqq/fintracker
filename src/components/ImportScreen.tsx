@@ -17,6 +17,7 @@ import {
   listOperations,
   upsertOperation
 } from "../lib/repository";
+import { todayIso } from "../lib/dates";
 
 function shortDate(iso: string) {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
@@ -165,7 +166,7 @@ export function ImportScreen() {
 
       if (picker) {
         const handle = await picker({
-          suggestedName: `fintracker-operations-${new Date().toISOString().slice(0, 10)}.csv`,
+          suggestedName: `fintracker-operations-${todayIso()}.csv`,
           types: [{ description: "CSV", accept: { "text/csv": [".csv"] } }]
         });
         const writable = await handle.createWritable();

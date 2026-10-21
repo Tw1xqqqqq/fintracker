@@ -1,16 +1,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import type { Account, Category, Operation, OperationStatus, OperationType } from "../types";
-
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function newId() {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `op-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { newId, todayIso } from "../lib/dates";
 
 type OperationFormProps = {
   accounts: Account[];
@@ -65,7 +56,7 @@ export function OperationForm({
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!isValid) return;
-    const id = initial?.id ?? newId();
+    const id = initial?.id ?? newId("op");
     const transferId = initial?.transferId ?? (type === "transfer" ? id : null);
     onSave({
       id,
