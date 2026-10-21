@@ -3,6 +3,7 @@ import type { Account, Category, Operation, RecurringRule, WeekPlan } from "../t
 import {
   aggregateWeeks,
   balanceSeries,
+  budgetBalances,
   computeAccountBalances,
   confirmedOperationId,
   pendingRecurringOperations,
@@ -101,6 +102,29 @@ describe("balanceSeries", () => {
 
   it("пустой список недель даёт пустой результат", () => {
     expect(balanceSeries(1000, [])).toEqual([]);
+  });
+});
+
+describe("budgetBalances", () => {
+  it("прогноз недели без факта идёт от фактического остатка (скрин из тестирования)", () => {
+    const { plan, effective } = budgetBalances(0, [
+      week("w1", 0, 0, 73502, 0),
+      week("w2", 0, 0, 50861, 8509),
+      week("w3", 9000, 9500),
+      week("w4", 0, 0)
+    ]);
+    // было: неделя 3 = −500 (чисто плановая цепочка), теперь 115854 − 500
+    expect(effective).toEqual([73502, 115854, 115354, 115354]);
+    expect(plan).toEqual([0, 0, -500, -500]);
+  });
+
+  it("неделя без факта между неделями с фактом берёт план", () => {
+    const { effective } = budgetBalances(100, [
+      week("w1", 0, 0, 0, 50),
+      week("w2", 0, 30),
+      week("w3", 0, 0, 10, 0)
+    ]);
+    expect(effective).toEqual([50, 20, 30]);
   });
 });
 
