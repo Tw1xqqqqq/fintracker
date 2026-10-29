@@ -3,6 +3,7 @@ import { Pencil } from "lucide-react";
 import type { Account } from "../types";
 import { getSetting, listAccounts, setSetting } from "../lib/repository";
 import { formatLongDate } from "../lib/dates";
+import { errorText } from "../lib/usage";
 
 type AccountingSettingsProps = {
   onChanged: () => void;
@@ -47,13 +48,17 @@ export function AccountingSettings({ onChanged }: AccountingSettingsProps) {
   };
 
   const handleSave = async () => {
-    await setSetting("startDate", draftDate);
-    if (draftPrimary) {
-      await setSetting("primaryAccountId", draftPrimary);
+    try {
+      await setSetting("startDate", draftDate);
+      if (draftPrimary) {
+        await setSetting("primaryAccountId", draftPrimary);
+      }
+      setEditing(false);
+      await load();
+      onChanged();
+    } catch (err) {
+      setError(errorText(err));
     }
-    setEditing(false);
-    await load();
-    onChanged();
   };
 
   const primaryName = accounts.find((account) => account.id === primaryId)?.name ?? "—";

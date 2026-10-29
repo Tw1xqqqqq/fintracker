@@ -21,7 +21,7 @@ import {
   sumAccountBalances
 } from "../lib/finance";
 import {
-  countOperationsForCategory,
+  categoryUsage,
   deleteCategory,
   getSetting,
   listAccounts,
@@ -36,6 +36,7 @@ import {
 import { CategoryForm } from "./CategoryForm";
 import { OperationPopover } from "./OperationPopover";
 import { defaultDateInWeek, shortDate, todayIso } from "../lib/dates";
+import { deleteBlockedMessage, errorText } from "../lib/usage";
 
 const PAGE_SIZE = 6;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -346,20 +347,28 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   };
 
   const handleSaveCategory = async (category: Category) => {
-    await upsertCategory(category);
-    setFormType(null);
-    await load();
+    try {
+      await upsertCategory(category);
+      setFormType(null);
+      await load();
+    } catch (err) {
+      setFormError(errorText(err));
+    }
   };
 
   const handleDeleteCategory = async (id: string) => {
-    const used = await countOperationsForCategory(id);
-    if (used > 0) {
-      setFormError(`Статья используется в ${used} операц. — удаление недоступно.`);
-      return;
+    try {
+      const blocked = deleteBlockedMessage("Статья", await categoryUsage(id));
+      if (blocked) {
+        setFormError(blocked);
+        return;
+      }
+      await deleteCategory(id);
+      setFormType(null);
+      await load();
+    } catch (err) {
+      setFormError(errorText(err));
     }
-    await deleteCategory(id);
-    setFormType(null);
-    await load();
   };
 
   const handleSavePopover = async (

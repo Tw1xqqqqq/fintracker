@@ -42,6 +42,7 @@ import {
   listOperations,
   upsertOperation
 } from "../lib/repository";
+import { errorText } from "../lib/usage";
 import { OperationForm } from "./OperationForm";
 import { shortDate, todayIso } from "../lib/dates";
 
@@ -122,6 +123,7 @@ export function OperationsJournal() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Operation | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -307,16 +309,26 @@ export function OperationsJournal() {
   };
 
   const handleSave = async (operation: Operation) => {
-    await upsertOperation(operation);
-    setFormOpen(false);
-    await reload();
+    try {
+      await upsertOperation(operation);
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
+    }
   };
 
+  // Удаление из меню строки идёт при закрытой форме — тогда ошибка над журналом.
   const handleDelete = async (id: string) => {
-    await deleteOperation(id);
-    setFormOpen(false);
-    setMenuFor(null);
-    await reload();
+    try {
+      await deleteOperation(id);
+      setFormOpen(false);
+      setMenuFor(null);
+      await reload();
+    } catch (err) {
+      if (formOpen) setFormError(errorText(err));
+      else setError(errorText(err));
+    }
   };
 
   if (loading) {
@@ -406,6 +418,7 @@ export function OperationsJournal() {
               className="intro-submit budget-add"
               onClick={() => {
                 setEditing(null);
+                setFormError(null);
                 setFormOpen(true);
               }}
             >
@@ -608,6 +621,7 @@ export function OperationsJournal() {
                                       role="menuitem"
                                       onClick={() => {
                                         setEditing(op);
+                                        setFormError(null);
                                         setFormOpen(true);
                                         setMenuFor(null);
                                       }}
@@ -665,6 +679,7 @@ export function OperationsJournal() {
           onSave={handleSave}
           onDelete={handleDelete}
           onCancel={() => setFormOpen(false)}
+          error={formError}
         />
       )}
     </div>

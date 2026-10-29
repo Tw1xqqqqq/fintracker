@@ -24,6 +24,7 @@ type RecurringFormProps = {
   onSave: (rule: RecurringRule) => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
+  error?: string | null;
 };
 
 export function RecurringForm({
@@ -32,7 +33,8 @@ export function RecurringForm({
   accounts,
   onSave,
   onDelete,
-  onCancel
+  onCancel,
+  error = null
 }: RecurringFormProps) {
   const [type, setType] = useState<RecurringRule["type"]>(initial?.type ?? "expense");
   const [accountId, setAccountId] = useState(initial?.accountId ?? accounts[0]?.id ?? "");
@@ -167,6 +169,8 @@ export function RecurringForm({
               placeholder="Например, Парикмахерская"
             />
           </label>
+
+          {error && <p className="error-text">{error}</p>}
 
           <div className="modal-actions">
             {initial ? (

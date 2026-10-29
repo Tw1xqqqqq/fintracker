@@ -8,6 +8,7 @@ import type {
 import { categories as seedCategories } from "../data/seed";
 import { recurringRuleOccurrences } from "./finance";
 import { openDatabase } from "./db";
+import type { Usage } from "./usage";
 
 type OperationRow = {
   id: string;
@@ -179,14 +180,15 @@ export async function deleteCategory(id: string): Promise<void> {
   await db.execute("DELETE FROM categories WHERE id = $1", [id]);
 }
 
-// Сколько операций ссылается на статью — чтобы не удалить используемую.
-export async function countOperationsForCategory(id: string): Promise<number> {
+// Сколько операций и регулярных правил ссылается на статью.
+export async function categoryUsage(id: string): Promise<Usage> {
   const db = await openDatabase();
-  const [{ count }] = await db.select<{ count: number }[]>(
-    "SELECT COUNT(*) as count FROM operations WHERE category_id = $1",
+  const [{ operations, rules }] = await db.select<Usage[]>(
+    `SELECT (SELECT COUNT(*) FROM operations WHERE category_id = $1) AS operations,
+            (SELECT COUNT(*) FROM recurring_rules WHERE category_id = $1) AS rules`,
     [id]
   );
-  return count;
+  return { operations, rules };
 }
 
 export async function upsertAccount(account: Account): Promise<void> {
@@ -202,16 +204,17 @@ export async function deleteAccount(id: string): Promise<void> {
   await db.execute("DELETE FROM accounts WHERE id = $1", [id]);
 }
 
-// Сколько операций ссылается на счёт — чтобы не удалить используемый.
-export async function countOperationsForAccount(id: string): Promise<number> {
+// Сколько операций (включая ноги переводов) и регулярных правил ссылается на счёт.
+export async function accountUsage(id: string): Promise<Usage> {
   const db = await openDatabase();
-  const [{ count }] = await db.select<{ count: number }[]>(
-    `SELECT COUNT(*) as count
-       FROM operations
-      WHERE account_id = $1 OR source_account_id = $1 OR target_account_id = $1`,
+  const [{ operations, rules }] = await db.select<Usage[]>(
+    `SELECT (SELECT COUNT(*)
+               FROM operations
+              WHERE account_id = $1 OR source_account_id = $1 OR target_account_id = $1) AS operations,
+            (SELECT COUNT(*) FROM recurring_rules WHERE account_id = $1) AS rules`,
     [id]
   );
-  return count;
+  return { operations, rules };
 }
 
 type RecurringRuleRow = {

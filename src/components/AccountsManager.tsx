@@ -3,12 +3,13 @@ import { Plus } from "lucide-react";
 import type { Account, Operation } from "../types";
 import { computeAccountBalances, formatMoney } from "../lib/finance";
 import {
-  countOperationsForAccount,
+  accountUsage,
   deleteAccount,
   listAccounts,
   listOperations,
   upsertAccount
 } from "../lib/repository";
+import { deleteBlockedMessage, errorText } from "../lib/usage";
 import { AccountForm } from "./AccountForm";
 
 const TYPE_LABELS: Record<Account["type"], string> = {
@@ -74,20 +75,28 @@ export function AccountsManager({ filterType, title, description }: AccountsMana
   };
 
   const handleSave = async (account: Account) => {
-    await upsertAccount(account);
-    setFormOpen(false);
-    await reload();
+    try {
+      await upsertAccount(account);
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
+    }
   };
 
   const handleDelete = async (id: string) => {
-    const used = await countOperationsForAccount(id);
-    if (used > 0) {
-      setFormError(`Счёт используется в ${used} операц. — удаление недоступно.`);
-      return;
+    try {
+      const blocked = deleteBlockedMessage("Счёт", await accountUsage(id));
+      if (blocked) {
+        setFormError(blocked);
+        return;
+      }
+      await deleteAccount(id);
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
     }
-    await deleteAccount(id);
-    setFormOpen(false);
-    await reload();
   };
 
   return (

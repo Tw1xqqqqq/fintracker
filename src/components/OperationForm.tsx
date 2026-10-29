@@ -10,6 +10,7 @@ type OperationFormProps = {
   onSave: (operation: Operation) => void;
   onDelete: (id: string) => void;
   onCancel: () => void;
+  error?: string | null;
 };
 
 export function OperationForm({
@@ -18,7 +19,8 @@ export function OperationForm({
   initial,
   onSave,
   onDelete,
-  onCancel
+  onCancel,
+  error = null
 }: OperationFormProps) {
   const defaultSourceAccountId = initial?.sourceAccountId ?? initial?.accountId ?? accounts[0]?.id ?? "";
   const [date, setDate] = useState(initial?.date ?? todayIso());
@@ -183,6 +185,8 @@ export function OperationForm({
               placeholder="Необязательно"
             />
           </label>
+
+          {error && <p className="error-text">{error}</p>}
 
           <div className="modal-actions">
             {initial ? (

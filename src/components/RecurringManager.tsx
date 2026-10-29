@@ -10,6 +10,7 @@ import {
   regenerateRecurringOperations,
   upsertRecurringRule
 } from "../lib/repository";
+import { errorText } from "../lib/usage";
 import { RecurringForm } from "./RecurringForm";
 import { customRecurrenceLabel, ruleToCustomRecurrence } from "./RecurrenceCustomDialog";
 
@@ -26,6 +27,7 @@ export function RecurringManager() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<RecurringRule | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   async function reload() {
     setLoading(true);
@@ -54,26 +56,36 @@ export function RecurringManager() {
 
   const openNew = () => {
     setEditing(null);
+    setFormError(null);
     setFormOpen(true);
   };
 
   const openEdit = (rule: RecurringRule) => {
     setEditing(rule);
+    setFormError(null);
     setFormOpen(true);
   };
 
   const handleSave = async (rule: RecurringRule) => {
-    await upsertRecurringRule(rule);
-    await regenerateRecurringOperations();
-    setFormOpen(false);
-    await reload();
+    try {
+      await upsertRecurringRule(rule);
+      await regenerateRecurringOperations();
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
+    }
   };
 
   const handleDelete = async (id: string) => {
-    await deleteRecurringRule(id);
-    await regenerateRecurringOperations();
-    setFormOpen(false);
-    await reload();
+    try {
+      await deleteRecurringRule(id);
+      await regenerateRecurringOperations();
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
+    }
   };
 
   return (
@@ -144,6 +156,7 @@ export function RecurringManager() {
           onSave={handleSave}
           onDelete={handleDelete}
           onCancel={() => setFormOpen(false)}
+          error={formError}
         />
       )}
     </div>

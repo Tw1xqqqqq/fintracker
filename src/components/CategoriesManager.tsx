@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import type { Category } from "../types";
 import {
-  countOperationsForCategory,
+  categoryUsage,
   deleteCategory,
   listCategories,
   upsertCategory
 } from "../lib/repository";
+import { deleteBlockedMessage, errorText } from "../lib/usage";
 import { CategoryForm } from "./CategoryForm";
 
 export function CategoriesManager() {
@@ -50,20 +51,28 @@ export function CategoriesManager() {
   };
 
   const handleSave = async (category: Category) => {
-    await upsertCategory(category);
-    setFormOpen(false);
-    await reload();
+    try {
+      await upsertCategory(category);
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
+    }
   };
 
   const handleDelete = async (id: string) => {
-    const used = await countOperationsForCategory(id);
-    if (used > 0) {
-      setFormError(`Статья используется в ${used} операц. — удаление недоступно.`);
-      return;
+    try {
+      const blocked = deleteBlockedMessage("Статья", await categoryUsage(id));
+      if (blocked) {
+        setFormError(blocked);
+        return;
+      }
+      await deleteCategory(id);
+      setFormOpen(false);
+      await reload();
+    } catch (err) {
+      setFormError(errorText(err));
     }
-    await deleteCategory(id);
-    setFormOpen(false);
-    await reload();
   };
 
   const renderGroup = (title: string, items: Category[]) => (
