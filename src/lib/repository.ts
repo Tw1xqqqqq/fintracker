@@ -1,6 +1,7 @@
 import type {
   Account,
   Category,
+  CreditCard,
   Operation,
   Reconciliation,
   RecurringRule
@@ -210,6 +211,44 @@ export async function deleteOperation(id: string): Promise<void> {
   } else {
     await db.execute("DELETE FROM operations WHERE id = $1", [id]);
   }
+}
+
+type CreditCardRow = {
+  account_id: string;
+  credit_limit: number;
+  statement_day: number;
+  payment_days: number;
+  repay_buffer_days: number;
+};
+
+export async function listCreditCards(): Promise<CreditCard[]> {
+  const db = await openDatabase();
+  const rows = await db.select<CreditCardRow[]>(
+    `SELECT account_id, credit_limit, statement_day, payment_days, repay_buffer_days
+       FROM credit_cards`
+  );
+  return rows.map((row) => ({
+    accountId: row.account_id,
+    creditLimit: row.credit_limit,
+    statementDay: row.statement_day,
+    paymentDays: row.payment_days,
+    repayBufferDays: row.repay_buffer_days
+  }));
+}
+
+export async function upsertCreditCard(card: CreditCard): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    `INSERT OR REPLACE INTO credit_cards
+       (account_id, credit_limit, statement_day, payment_days, repay_buffer_days)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [card.accountId, card.creditLimit, card.statementDay, card.paymentDays, card.repayBufferDays]
+  );
+}
+
+export async function deleteCreditCard(accountId: string): Promise<void> {
+  const db = await openDatabase();
+  await db.execute("DELETE FROM credit_cards WHERE account_id = $1", [accountId]);
 }
 
 export async function upsertCategory(category: Category): Promise<void> {

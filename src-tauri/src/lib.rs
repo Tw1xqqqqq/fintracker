@@ -205,6 +205,20 @@ fn migrations() -> Vec<Migration> {
             );
         ",
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 11,
+        description: "create_credit_cards",
+        sql: "
+            CREATE TABLE IF NOT EXISTS credit_cards (
+                account_id        TEXT PRIMARY KEY REFERENCES accounts(id),
+                credit_limit      REAL NOT NULL DEFAULT 0,
+                statement_day     INTEGER NOT NULL DEFAULT 1,
+                payment_days      INTEGER NOT NULL DEFAULT 20,
+                repay_buffer_days INTEGER NOT NULL DEFAULT 3
+            );
+        ",
+        kind: MigrationKind::Up,
     }]
 }
 

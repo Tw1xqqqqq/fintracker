@@ -9,6 +9,16 @@ export interface Account {
   balance: number;
 }
 
+// Настройки кредитки (льготный период по расчётному периоду).
+// Долг хранится в балансе счёта: стартовый баланс кредитки ≤ 0.
+export interface CreditCard {
+  accountId: string;
+  creditLimit: number;
+  statementDay: number; // день выписки, 1–31 (31 в коротком месяце — последний день)
+  paymentDays: number; // платёжный период: дней от выписки до даты платежа
+  repayBufferDays: number; // за сколько дней до даты платежа планировать погашение
+}
+
 export interface Category {
   id: string;
   name: string;

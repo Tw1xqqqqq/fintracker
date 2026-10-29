@@ -2562,3 +2562,118 @@ h1 {
   justify-content: center;
   gap: 6px;
 }
+
+/* Экран кредиток */
+.cc-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cc-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px 24px;
+}
+
+.cc-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cc-summary-label {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cc-summary-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.cc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cc-numbers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.cc-numbers strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.cc-muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.cc-line {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cc-warn {
+  color: var(--warn);
+}
+
+.cc-bar {
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.cc-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--primary);
+}
+
+.cc-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 2px 10px;
+  background: var(--accent);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cc-status--due {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.cc-status--soon {
+  background: #fff7ed;
+  color: var(--warn);
+}
+
+.cc-status--overdue {
+  background: #fef2f2;
+  color: var(--expense);
+}
+
+.cc-status--clear {
+  background: #ecfdf5;
+  color: var(--income);
+}
