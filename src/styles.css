@@ -2453,3 +2453,112 @@ h1 {
   border-radius: 6px;
   font-size: 12px;
 }
+
+/* Список операций ячейки бюджета (правка и удаление из таблицы) */
+.cell-ops {
+  width: 420px;
+  max-height: 80vh;
+}
+
+.cell-ops-subtitle {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cell-ops-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+  border-top: 1px solid var(--line);
+}
+
+.cell-ops-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.cell-ops-info {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.cell-ops-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.cell-ops-desc {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-ops-recurring {
+  display: inline-flex;
+  color: var(--muted);
+}
+
+.cell-ops-account {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.cell-ops-amount {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.cell-ops-actions,
+.cell-ops-confirm {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.cell-ops-confirm button {
+  height: 28px;
+  border-radius: 6px;
+  padding: 0 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.cell-ops-confirm-yes {
+  border: 0;
+  background: var(--expense);
+  color: #ffffff;
+}
+
+.cell-ops-confirm-yes:disabled {
+  opacity: 0.6;
+}
+
+.cell-ops-confirm-no {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cell-ops .operation-popover-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}

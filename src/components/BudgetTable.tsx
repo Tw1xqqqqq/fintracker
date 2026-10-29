@@ -16,6 +16,7 @@ import type { Week } from "../lib/finance";
 import {
   budgetBalances,
   confirmedOperationId,
+  parseRecurringOccurrenceId,
   pendingRecurringOperations,
   suggestWeeklyAverages,
   sumAccountBalances
@@ -23,18 +24,22 @@ import {
 import {
   categoryUsage,
   deleteCategory,
+  deleteOperation,
   getSetting,
   listAccounts,
   listCategories,
   listOperations,
   listRecurringRules,
   regenerateRecurringOperations,
+  updateRecurringOccurrence,
   upsertCategory,
   upsertOperation,
   upsertRecurringRule
 } from "../lib/repository";
 import { CategoryForm } from "./CategoryForm";
 import { OperationPopover } from "./OperationPopover";
+import { CellOperationsPopover } from "./CellOperationsPopover";
+import { OperationForm } from "./OperationForm";
 import { defaultDateInWeek, shortDate, todayIso } from "../lib/dates";
 import { deleteBlockedMessage, errorText } from "../lib/usage";
 
@@ -104,6 +109,15 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     date: string;
     status: "actual" | "planned";
   } | null>(null);
+  // Открытая ячейка со списком операций и операция, открытая на правку.
+  const [cellContext, setCellContext] = useState<{
+    categoryId: string;
+    weekIdx: number;
+    status: "actual" | "planned";
+  } | null>(null);
+  const [cellError, setCellError] = useState<string | null>(null);
+  const [editingOperation, setEditingOperation] = useState<Operation | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const today = todayIso();
   const currentIdx = useMemo(
@@ -390,6 +404,75 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     }
   };
 
+  // Операции ячейки (статья × неделя) в текущем режиме.
+  const operationsInCell = (categoryId: string, weekIdx: number, status: Operation["status"]) => {
+    const week = weeks[weekIdx];
+    if (!week) return [];
+    return operations
+      .filter(
+        (operation) =>
+          operation.status === status &&
+          operation.categoryId === categoryId &&
+          operation.date >= week.start &&
+          operation.date <= week.end
+      )
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  };
+
+  // Клик по ячейке: есть записи — список с правкой и удалением, пусто — сразу добавление.
+  const openCell = (categoryId: string, weekIdx: number, status: "actual" | "planned") => {
+    if (operationsInCell(categoryId, weekIdx, status).length > 0) {
+      setCellError(null);
+      setCellContext({ categoryId, weekIdx, status });
+      return;
+    }
+    openAddInCell(categoryId, weekIdx, status);
+  };
+
+  const openAddInCell = (categoryId: string, weekIdx: number, status: "actual" | "planned") => {
+    const week = weeks[weekIdx];
+    setCellContext(null);
+    setOperationContext({
+      categoryId,
+      date: status === "actual" ? defaultDateInWeek(week, today) : week.start,
+      status
+    });
+  };
+
+  const handleDeleteFromCell = async (operation: Operation) => {
+    try {
+      await deleteOperation(operation.id);
+      await load();
+    } catch (err) {
+      setCellError(errorText(err));
+    }
+  };
+
+  const handleSaveEdited = async (operation: Operation) => {
+    if (!editingOperation) return;
+    try {
+      if (parseRecurringOccurrenceId(editingOperation.id)) {
+        await updateRecurringOccurrence(editingOperation, operation);
+      } else {
+        await upsertOperation(operation);
+      }
+      setEditingOperation(null);
+      await load();
+    } catch (err) {
+      setEditError(errorText(err));
+    }
+  };
+
+  const handleDeleteEdited = async (id: string) => {
+    try {
+      await deleteOperation(id);
+      setEditingOperation(null);
+      await load();
+    } catch (err) {
+      setEditError(errorText(err));
+    }
+  };
+
   const pageWeeks = weeks.slice(pageStart, pageStart + PAGE_SIZE);
 
   const dash = <span className="budget-dash">—</span>;
@@ -403,10 +486,8 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
         <button
           type="button"
           className="budget-entry-cell"
-          aria-label={`Добавить плановую запись: ${category.name}, ${shortDate(weekStart)}`}
-          onClick={() =>
-            setOperationContext({ categoryId: category.id, date: weekStart, status: "planned" })
-          }
+          aria-label={`Плановые записи: ${category.name}, ${shortDate(weekStart)}`}
+          onClick={() => openCell(category.id, globalIdx, "planned")}
         >
           {value ? money(value) : dash}
         </button>
@@ -425,14 +506,8 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
         className="budget-entry-cell"
         onMouseEnter={(event) => showTip(event, cellTip)}
         onMouseLeave={hideTip}
-        aria-label={`Добавить запись: ${category.name}, ${shortDate(weeks[globalIdx].start)}`}
-        onClick={() =>
-          setOperationContext({
-            categoryId: category.id,
-            date: defaultDateInWeek(weeks[globalIdx], today),
-            status: "actual"
-          })
-        }
+        aria-label={`Записи: ${category.name}, ${shortDate(weeks[globalIdx].start)}`}
+        onClick={() => openCell(category.id, globalIdx, "actual")}
       >
         {isPending ? (
           <>
@@ -899,6 +974,41 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
           onSave={handleSaveCategory}
           onDelete={handleDeleteCategory}
           onCancel={() => setFormType(null)}
+        />
+      )}
+
+      {cellContext !== null && (() => {
+        const cellOps = operationsInCell(cellContext.categoryId, cellContext.weekIdx, cellContext.status);
+        const category = categories.find((item) => item.id === cellContext.categoryId);
+        const week = weeks[cellContext.weekIdx];
+        if (!week || cellOps.length === 0) return null;
+        return (
+          <CellOperationsPopover
+            title={`${category?.name ?? "Статья"} · ${cellContext.status === "planned" ? "план" : "факт"}`}
+            subtitle={`Неделя ${cellContext.weekIdx + 1} · ${shortDate(week.start)} – ${shortDate(week.end)}`}
+            operations={cellOps}
+            accounts={accounts}
+            error={cellError}
+            onAdd={() => openAddInCell(cellContext.categoryId, cellContext.weekIdx, cellContext.status)}
+            onEdit={(operation) => {
+              setEditError(null);
+              setEditingOperation(operation);
+            }}
+            onDelete={handleDeleteFromCell}
+            onCancel={() => setCellContext(null)}
+          />
+        );
+      })()}
+
+      {editingOperation !== null && (
+        <OperationForm
+          accounts={accounts}
+          categories={categories}
+          initial={editingOperation}
+          onSave={handleSaveEdited}
+          onDelete={handleDeleteEdited}
+          onCancel={() => setEditingOperation(null)}
+          error={editError}
         />
       )}
 
