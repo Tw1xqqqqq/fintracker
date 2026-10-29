@@ -123,6 +123,35 @@ export async function upsertOperation(operation: Operation): Promise<void> {
   );
 }
 
+// Импорт выписки: уже импортированные операции (тот же id) не трогаем,
+// чтобы повторный импорт не затирал поправленные вручную статьи.
+// Возвращает, сколько операций добавлено и сколько пропущено как дубли.
+export async function insertImportedOperations(
+  operations: Operation[]
+): Promise<{ inserted: number; duplicates: number }> {
+  const db = await openDatabase();
+  let inserted = 0;
+  for (const operation of operations) {
+    const result = await db.execute(
+      `INSERT OR IGNORE INTO operations
+         (id, date, type, status, category_id, account_id, amount, description)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        operation.id,
+        operation.date,
+        operation.type,
+        operation.status,
+        operation.categoryId,
+        operation.accountId,
+        operation.amount,
+        operation.description
+      ]
+    );
+    inserted += result.rowsAffected;
+  }
+  return { inserted, duplicates: operations.length - inserted };
+}
+
 export async function deleteOperation(id: string): Promise<void> {
   const db = await openDatabase();
   const rows = await db.select<{ transfer_id: string | null }[]>(

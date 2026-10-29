@@ -6,6 +6,7 @@ import {
   decodeCsvBuffer,
   detectDelimiter,
   guessColumns,
+  importOperationId,
   parseAmount,
   parseCsv,
   parseFlexibleDate
@@ -121,6 +122,16 @@ describe("buildImportRows", () => {
     const second = buildImportRows(rows, guessColumns(rows), []);
     expect(first.rows[0].key).toBe(second.rows[0].key); // повторный импорт -> те же id
     expect(first.rows[0].key).not.toBe(first.rows[1].key); // но две покупки в день различимы
+  });
+
+  it("id импортированной операции зависит от счёта", () => {
+    const rows = parseCsv("15.07.2026;-100;Кофе");
+    const [row] = buildImportRows(rows, guessColumns(rows), []).rows;
+    const onCardA = importOperationId("card-a", row.key);
+    const onCardB = importOperationId("card-b", row.key);
+    expect(onCardA).not.toBe(onCardB); // выписки двух карт не перезаписывают друг друга
+    expect(onCardA).toBe(importOperationId("card-a", row.key)); // повторный импорт на ту же карту — тот же id
+    expect(onCardA.startsWith("import:card-a:")).toBe(true);
   });
 
   it("считает нераспознанные строки", () => {

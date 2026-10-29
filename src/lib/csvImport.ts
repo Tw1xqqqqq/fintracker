@@ -268,6 +268,12 @@ export function buildImportRows(
   return { rows: result, skipped };
 }
 
+// Id импортированной операции: ключ строки + счёт. Без счёта одинаковые
+// строки выписок двух карт получали один id и перезаписывали друг друга.
+export function importOperationId(accountId: string, rowKey: string): string {
+  return rowKey.replace(/^import:/, `import:${accountId}:`);
+}
+
 // --- Экспорт журнала операций в CSV (разделитель «;», для Excel).
 // Переводы выгружаются одной строкой (нога списания) с маршрутом «A → B».
 const TYPE_LABELS: Record<Operation["type"], string> = {

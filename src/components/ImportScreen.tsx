@@ -7,6 +7,7 @@ import {
   buildOperationsCsv,
   decodeCsvBuffer,
   guessColumns,
+  importOperationId,
   parseCsv
 } from "../lib/csvImport";
 import { formatMoney } from "../lib/finance";
@@ -14,8 +15,8 @@ import {
   getSetting,
   listAccounts,
   listCategories,
-  listOperations,
-  upsertOperation
+  insertImportedOperations,
+  listOperations
 } from "../lib/repository";
 import { todayIso } from "../lib/dates";
 
@@ -46,6 +47,7 @@ export function ImportScreen() {
   const [skipped, setSkipped] = useState(0);
   const [saving, setSaving] = useState(false);
   const [importedCount, setImportedCount] = useState<number | null>(null);
+  const [duplicateCount, setDuplicateCount] = useState(0);
   const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -117,9 +119,9 @@ export function ImportScreen() {
     setSaving(true);
     setError(null);
     try {
-      for (const row of ready) {
-        await upsertOperation({
-          id: row.key,
+      const { inserted, duplicates } = await insertImportedOperations(
+        ready.map((row) => ({
+          id: importOperationId(accountId, row.key),
           date: row.date,
           type: row.type,
           status: "actual",
@@ -127,9 +129,10 @@ export function ImportScreen() {
           accountId,
           amount: row.amount,
           description: row.description
-        });
-      }
-      setImportedCount(ready.length);
+        }))
+      );
+      setImportedCount(inserted);
+      setDuplicateCount(duplicates);
       setRows([]);
       setRawRows([]);
       setMapping(null);
@@ -252,6 +255,8 @@ export function ImportScreen() {
           <p className="import-success">
             <CircleCheck size={16} />
             Импортировано операций: {importedCount}. Они уже в журнале и учтены в балансе.
+            {duplicateCount > 0 &&
+              ` Пропущено дублей: ${duplicateCount} — эти операции уже были импортированы на этот счёт.`}
           </p>
         )}
 
