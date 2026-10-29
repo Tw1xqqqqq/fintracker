@@ -32,6 +32,7 @@ import {
   confirmedOperationId,
   formatMoney,
   generateWeeks,
+  parseRecurringOccurrenceId,
   pendingRecurringOperations
 } from "../lib/finance";
 import {
@@ -40,6 +41,7 @@ import {
   listAccounts,
   listCategories,
   listOperations,
+  updateRecurringOccurrence,
   upsertOperation
 } from "../lib/repository";
 import { errorText } from "../lib/usage";
@@ -310,7 +312,11 @@ export function OperationsJournal() {
 
   const handleSave = async (operation: Operation) => {
     try {
-      await upsertOperation(operation);
+      if (editing && parseRecurringOccurrenceId(editing.id)) {
+        await updateRecurringOccurrence(editing, operation);
+      } else {
+        await upsertOperation(operation);
+      }
       setFormOpen(false);
       await reload();
     } catch (err) {

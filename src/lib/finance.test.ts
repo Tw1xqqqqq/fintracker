@@ -6,6 +6,9 @@ import {
   budgetBalances,
   computeAccountBalances,
   confirmedOperationId,
+  editedOccurrenceId,
+  occurrencesToGenerate,
+  parseRecurringOccurrenceId,
   pendingRecurringOperations,
   computeExpectedBalance,
   computeWeeklyBalance,
@@ -598,5 +601,38 @@ describe("recurringRuleOccurrences", () => {
       "2032-12-31"
     );
     expect(dates).toEqual(["2026-07-07", "2028-07-07", "2030-07-07"]);
+  });
+});
+
+describe("вхождения регулярных правил", () => {
+  it("разбирает id сгенерированного и отредактированного вхождения", () => {
+    const occurrence = { ruleId: "9f2e-ab", date: "2026-11-07" };
+    expect(parseRecurringOccurrenceId("rec:9f2e-ab:2026-11-07")).toEqual(occurrence);
+    expect(parseRecurringOccurrenceId(editedOccurrenceId(occurrence))).toEqual(occurrence);
+  });
+
+  it("не путает с подтверждённым фактом и обычными операциями", () => {
+    expect(parseRecurringOccurrenceId("confirm:rec:9f2e-ab:2026-11-07")).toBeNull();
+    expect(parseRecurringOccurrenceId("manual-plan:2026-11-02:food")).toBeNull();
+    expect(parseRecurringOccurrenceId("op-123")).toBeNull();
+  });
+
+  const dates = ["2026-10-07", "2026-10-21", "2026-11-04", "2026-11-18"];
+
+  it("у правила с прошлыми вхождениями пересоздаются только будущие даты", () => {
+    expect(occurrencesToGenerate(dates, "2026-10-29", true, new Set())).toEqual([
+      "2026-11-04",
+      "2026-11-18"
+    ]);
+  });
+
+  it("новое правило со стартом в прошлом раскладывается целиком", () => {
+    expect(occurrencesToGenerate(dates, "2026-10-29", false, new Set())).toEqual(dates);
+  });
+
+  it("удалённые и отредактированные вручную даты пропускаются", () => {
+    expect(occurrencesToGenerate(dates, "2026-10-29", true, new Set(["2026-11-04"]))).toEqual([
+      "2026-11-18"
+    ]);
   });
 });

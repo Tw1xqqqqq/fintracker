@@ -302,6 +302,38 @@ export function computeExpectedBalance(
   }, sumAccountBalances(accounts));
 }
 
+// Вхождение регулярного правила: сгенерированное (rec:<правило>:<дата>) или
+// отредактированное пользователем (rec-edit:<правило>:<дата>). Дата — исходная
+// дата вхождения: по ней в recurring_exceptions помечается, что генерировать
+// его больше не нужно.
+export interface RecurringOccurrence {
+  ruleId: string;
+  date: string;
+}
+
+export function parseRecurringOccurrenceId(id: string): RecurringOccurrence | null {
+  const match = /^rec(?:-edit)?:(.+):(\d{4}-\d{2}-\d{2})$/.exec(id);
+  return match ? { ruleId: match[1], date: match[2] } : null;
+}
+
+export function editedOccurrenceId(occurrence: RecurringOccurrence): string {
+  return `rec-edit:${occurrence.ruleId}:${occurrence.date}`;
+}
+
+// Какие даты правила раскладывать в план. Прошлые вхождения не пересоздаются,
+// если по правилу уже есть операции в прошлом («изменение правила влияет только
+// на будущие операции»); для нового правила со стартом в прошлом прошлые даты
+// раскладываются. Даты из исключений (удалённые или отредактированные вручную
+// вхождения) пропускаются.
+export function occurrencesToGenerate(
+  dates: string[],
+  today: string,
+  hasPastOccurrences: boolean,
+  skipped: Set<string>
+): string[] {
+  return dates.filter((date) => !skipped.has(date) && (date >= today || !hasPastOccurrences));
+}
+
 // Факт, созданный подтверждением регулярной плановой операции.
 // Детерминированный id — повторное подтверждение не создаёт дубль.
 export function confirmedOperationId(plannedId: string): string {

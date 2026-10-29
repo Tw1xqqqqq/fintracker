@@ -6,7 +6,13 @@ import type {
   RecurringRule
 } from "../types";
 import { categories as seedCategories } from "../data/seed";
-import { recurringRuleOccurrences } from "./finance";
+import {
+  editedOccurrenceId,
+  occurrencesToGenerate,
+  parseRecurringOccurrenceId,
+  recurringRuleOccurrences
+} from "./finance";
+import { newId, todayIso } from "./dates";
 import { openDatabase } from "./db";
 import type { Usage } from "./usage";
 
@@ -153,8 +159,47 @@ export async function insertImportedOperations(
   return { inserted, duplicates: operations.length - inserted };
 }
 
+// Помечает вхождение регулярного правила как изменённое вручную —
+// перегенерация его больше не создаёт.
+async function addRecurringException(ruleId: string, date: string): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    "INSERT OR IGNORE INTO recurring_exceptions (rule_id, date) VALUES ($1, $2)",
+    [ruleId, date]
+  );
+}
+
+// Правка одного вхождения регулярного правила: исходное вхождение уходит в
+// исключения, а правка сохраняется под своим id (rec-edit:…), который
+// перегенерация не трогает. Перевод теряет связь с правилом и получает новый id.
+export async function updateRecurringOccurrence(
+  original: Operation,
+  edited: Operation
+): Promise<void> {
+  const occurrence = parseRecurringOccurrenceId(original.id);
+  if (!occurrence) {
+    await upsertOperation(edited);
+    return;
+  }
+  const db = await openDatabase();
+  await addRecurringException(occurrence.ruleId, occurrence.date);
+  await db.execute("DELETE FROM operations WHERE id = $1", [original.id]);
+  if (edited.type === "transfer") {
+    await upsertOperation({ ...edited, id: newId("op"), transferId: null, recurringId: null });
+    return;
+  }
+  await upsertOperation({
+    ...edited,
+    id: editedOccurrenceId(occurrence),
+    recurringId: occurrence.ruleId
+  });
+}
+
 export async function deleteOperation(id: string): Promise<void> {
   const db = await openDatabase();
+  // Удалённое вхождение регулярного правила не должно вернуться при перегенерации.
+  const occurrence = parseRecurringOccurrenceId(id);
+  if (occurrence) await addRecurringException(occurrence.ruleId, occurrence.date);
   const rows = await db.select<{ transfer_id: string | null }[]>(
     "SELECT transfer_id FROM operations WHERE id = $1",
     [id]
@@ -297,9 +342,13 @@ export async function upsertRecurringRule(rule: RecurringRule): Promise<void> {
   );
 }
 
-export async function deleteRecurringRule(id: string): Promise<void> {
+// Удаление правила убирает его будущие вхождения (в том числе отредактированные);
+// прошлые остаются в плане как история.
+export async function deleteRecurringRule(id: string, today = todayIso()): Promise<void> {
   const db = await openDatabase();
   await db.execute("DELETE FROM recurring_rules WHERE id = $1", [id]);
+  await db.execute("DELETE FROM operations WHERE recurring_id = $1 AND date >= $2", [id, today]);
+  await db.execute("DELETE FROM recurring_exceptions WHERE rule_id = $1", [id]);
 }
 
 type ReconciliationRow = {
@@ -356,15 +405,32 @@ function oneYearAfter(iso: string): string {
   return date.toISOString().slice(0, 10);
 }
 
-// Пересобирает плановые операции из правил: удаляет ранее сгенерированные
-// (recurring_id IS NOT NULL) и заново раскладывает каждое правило по датам
-// повторений до горизонта планирования (settings.endDate или +1 год).
-export async function regenerateRecurringOperations(): Promise<void> {
+// Пересобирает плановые операции из правил до горизонта планирования
+// (settings.endDate или +1 год). Пересоздаются только будущие сгенерированные
+// вхождения (rec:…, с сегодняшнего дня): прошлые остаются как были, а
+// отредактированные (rec-edit:…) и удалённые вручную вхождения — в
+// recurring_exceptions, их перегенерация не трогает.
+export async function regenerateRecurringOperations(today = todayIso()): Promise<void> {
   const db = await openDatabase();
   const rules = await listRecurringRules();
   const horizonSetting = await getSetting("endDate");
 
-  await db.execute("DELETE FROM operations WHERE recurring_id IS NOT NULL");
+  const exceptionRows = await db.select<{ rule_id: string; date: string }[]>(
+    "SELECT rule_id, date FROM recurring_exceptions"
+  );
+  const skippedByRule = new Map<string, Set<string>>();
+  for (const row of exceptionRows) {
+    const set = skippedByRule.get(row.rule_id) ?? new Set<string>();
+    set.add(row.date);
+    skippedByRule.set(row.rule_id, set);
+  }
+  const pastRows = await db.select<{ recurring_id: string }[]>(
+    "SELECT DISTINCT recurring_id FROM operations WHERE recurring_id IS NOT NULL AND date < $1",
+    [today]
+  );
+  const rulesWithPast = new Set(pastRows.map((row) => row.recurring_id));
+
+  await db.execute("DELETE FROM operations WHERE id LIKE 'rec:%' AND date >= $1", [today]);
 
   for (const rule of rules) {
     // Если конец фин. года раньше старта правила, правило разложилось бы в ноль
@@ -373,10 +439,15 @@ export async function regenerateRecurringOperations(): Promise<void> {
       horizonSetting && horizonSetting >= rule.startDate
         ? horizonSetting
         : oneYearAfter(rule.startDate);
-    const dates = recurringRuleOccurrences(rule, horizon);
+    const dates = occurrencesToGenerate(
+      recurringRuleOccurrences(rule, horizon),
+      today,
+      rulesWithPast.has(rule.id),
+      skippedByRule.get(rule.id) ?? new Set()
+    );
     for (const date of dates) {
       await db.execute(
-        `INSERT OR REPLACE INTO operations
+        `INSERT OR IGNORE INTO operations
            (id, date, type, status, category_id, account_id, amount, description, recurring_id)
          VALUES ($1, $2, $3, 'planned', $4, $5, $6, $7, $8)`,
         [

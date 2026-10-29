@@ -193,6 +193,18 @@ fn migrations() -> Vec<Migration> {
             DROP TABLE IF EXISTS week_category_plans;
         ",
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 10,
+        description: "create_recurring_exceptions",
+        sql: "
+            CREATE TABLE IF NOT EXISTS recurring_exceptions (
+                rule_id TEXT NOT NULL,
+                date    TEXT NOT NULL,
+                PRIMARY KEY (rule_id, date)
+            );
+        ",
+        kind: MigrationKind::Up,
     }]
 }
 
