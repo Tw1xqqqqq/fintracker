@@ -35,7 +35,7 @@ import {
 } from "../lib/repository";
 import { CategoryForm } from "./CategoryForm";
 import { OperationPopover } from "./OperationPopover";
-import { shortDate, todayIso } from "../lib/dates";
+import { defaultDateInWeek, shortDate, todayIso } from "../lib/dates";
 
 const PAGE_SIZE = 6;
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -420,7 +420,7 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
         onClick={() =>
           setOperationContext({
             categoryId: category.id,
-            date: weeks[globalIdx].start,
+            date: defaultDateInWeek(weeks[globalIdx], today),
             status: "actual"
           })
         }

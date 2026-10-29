@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { formatLongDate, newId, shortDate, todayIso } from "./dates";
+import { defaultDateInWeek, formatLongDate, newId, shortDate, todayIso } from "./dates";
 
 const originalTz = process.env.TZ;
 
@@ -17,6 +17,19 @@ describe("todayIso", () => {
 
   it("дополняет месяц и день нулями", () => {
     expect(todayIso(new Date(2026, 0, 5, 12))).toBe("2026-01-05");
+  });
+});
+
+describe("defaultDateInWeek", () => {
+  const week = { start: "2026-10-26", end: "2026-11-01" };
+
+  it("в текущей неделе — сегодня", () => {
+    expect(defaultDateInWeek(week, "2026-10-29")).toBe("2026-10-29");
+  });
+
+  it("в другой неделе — её первый день", () => {
+    expect(defaultDateInWeek(week, "2026-11-05")).toBe("2026-10-26");
+    expect(defaultDateInWeek(week, "2026-10-20")).toBe("2026-10-26");
   });
 });
 

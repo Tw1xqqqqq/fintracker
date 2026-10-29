@@ -14,6 +14,12 @@ export function todayIso(now: Date = new Date()): string {
   return toLocalIsoDate(now);
 }
 
+// Дата по умолчанию для новой записи в колонке недели: сегодня, если неделя
+// текущая, иначе её первый день.
+export function defaultDateInWeek(week: { start: string; end: string }, today: string): string {
+  return today >= week.start && today <= week.end ? today : week.start;
+}
+
 // «19.10»
 export function shortDate(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
