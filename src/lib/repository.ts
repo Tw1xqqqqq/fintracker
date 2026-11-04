@@ -15,7 +15,21 @@ import {
 } from "./finance";
 import { newId, todayIso } from "./dates";
 import { openDatabase } from "./db";
+import { buildInsertBatches } from "./sqlBatch";
 import type { Usage } from "./usage";
+
+// Выполняет вставку строк пакетами (один многострочный INSERT на пакет)
+// и возвращает число фактически вставленных строк.
+async function insertRows(prefix: string, rows: unknown[][]): Promise<number> {
+  if (rows.length === 0) return 0;
+  const db = await openDatabase();
+  let inserted = 0;
+  for (const batch of buildInsertBatches(prefix, rows)) {
+    const result = await db.execute(batch.sql, batch.params);
+    inserted += result.rowsAffected;
+  }
+  return inserted;
+}
 
 type OperationRow = {
   id: string;
@@ -137,26 +151,20 @@ export async function upsertOperation(operation: Operation): Promise<void> {
 export async function insertImportedOperations(
   operations: Operation[]
 ): Promise<{ inserted: number; duplicates: number }> {
-  const db = await openDatabase();
-  let inserted = 0;
-  for (const operation of operations) {
-    const result = await db.execute(
-      `INSERT OR IGNORE INTO operations
-         (id, date, type, status, category_id, account_id, amount, description)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [
-        operation.id,
-        operation.date,
-        operation.type,
-        operation.status,
-        operation.categoryId,
-        operation.accountId,
-        operation.amount,
-        operation.description
-      ]
-    );
-    inserted += result.rowsAffected;
-  }
+  const inserted = await insertRows(
+    `INSERT OR IGNORE INTO operations
+       (id, date, type, status, category_id, account_id, amount, description)`,
+    operations.map((operation) => [
+      operation.id,
+      operation.date,
+      operation.type,
+      operation.status,
+      operation.categoryId,
+      operation.accountId,
+      operation.amount,
+      operation.description
+    ])
+  );
   return { inserted, duplicates: operations.length - inserted };
 }
 
@@ -471,6 +479,9 @@ export async function regenerateRecurringOperations(today = todayIso()): Promise
 
   await db.execute("DELETE FROM operations WHERE id LIKE 'rec:%' AND date >= $1", [today]);
 
+  // Все вхождения всех правил собираются в один список и вставляются пакетами:
+  // на годовом горизонте это несколько запросов вместо тысяч построчных.
+  const rows: unknown[][] = [];
   for (const rule of rules) {
     // Если конец фин. года раньше старта правила, правило разложилось бы в ноль
     // операций — в этом случае раскладываем на год вперёд от старта правила.
@@ -485,23 +496,25 @@ export async function regenerateRecurringOperations(today = todayIso()): Promise
       skippedByRule.get(rule.id) ?? new Set()
     );
     for (const date of dates) {
-      await db.execute(
-        `INSERT OR IGNORE INTO operations
-           (id, date, type, status, category_id, account_id, amount, description, recurring_id)
-         VALUES ($1, $2, $3, 'planned', $4, $5, $6, $7, $8)`,
-        [
-          `rec:${rule.id}:${date}`,
-          date,
-          rule.type,
-          rule.categoryId,
-          rule.accountId,
-          rule.amount,
-          rule.description,
-          rule.id
-        ]
-      );
+      rows.push([
+        `rec:${rule.id}:${date}`,
+        date,
+        rule.type,
+        "planned",
+        rule.categoryId,
+        rule.accountId,
+        rule.amount,
+        rule.description,
+        rule.id
+      ]);
     }
   }
+
+  await insertRows(
+    `INSERT OR IGNORE INTO operations
+       (id, date, type, status, category_id, account_id, amount, description, recurring_id)`,
+    rows
+  );
 }
 
 // Подсевает набор статей по умолчанию, если справочник статей пуст
