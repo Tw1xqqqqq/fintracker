@@ -2677,3 +2677,20 @@ h1 {
   background: #ecfdf5;
   color: var(--income);
 }
+
+/* Переключатель «добавлять проценты в план» в форме вклада */
+.dep-switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dep-switch input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
+  cursor: pointer;
+}

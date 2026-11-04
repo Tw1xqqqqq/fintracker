@@ -19,6 +19,19 @@ export interface CreditCard {
   repayBufferDays: number; // за сколько дней до даты платежа планировать погашение
 }
 
+export type Capitalization = "none" | "monthly" | "end";
+
+// Вклад: счёт типа savings плюс условия начисления процентов.
+// Тело вклада живёт в балансе счёта и в пополнениях и снятиях (переводах).
+export interface Deposit {
+  accountId: string;
+  rate: number; // % годовых, 0–100
+  openDate: string;
+  closeDate: string | null; // null — вклад без срока
+  capitalization: Capitalization;
+  planInterest: boolean; // добавлять ожидаемые проценты в «План» как доход
+}
+
 export interface Category {
   id: string;
   name: string;

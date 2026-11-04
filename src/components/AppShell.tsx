@@ -19,6 +19,7 @@ import { AccountingSettings } from "./AccountingSettings";
 import { RecurringManager } from "./RecurringManager";
 import { ImportScreen } from "./ImportScreen";
 import { CreditCardsScreen } from "./CreditCardsScreen";
+import { DepositsScreen } from "./DepositsScreen";
 
 type SectionId =
   | "operations"
@@ -43,7 +44,7 @@ const MAIN_ITEMS: NavItem[] = [
 
 const ACCOUNT_ITEMS: NavItem[] = [
   { id: "card", label: "Карта", icon: CreditCard },
-  { id: "deposit", label: "Депозит", icon: PiggyBank },
+  { id: "deposit", label: "Депозиты", icon: PiggyBank },
   { id: "credit", label: "Кредитки", icon: Landmark }
 ];
 
@@ -160,13 +161,7 @@ function Section({ id, onChanged }: SectionProps) {
   }
 
   if (id === "deposit") {
-    return (
-      <AccountsManager
-        filterType="savings"
-        title="Депозиты"
-        description="Накопительные и депозитные счета."
-      />
-    );
+    return <DepositsScreen />;
   }
 
   if (id === "credit") {

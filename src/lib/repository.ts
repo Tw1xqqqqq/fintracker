@@ -2,6 +2,7 @@ import type {
   Account,
   Category,
   CreditCard,
+  Deposit,
   Operation,
   Reconciliation,
   RecurringRule
@@ -257,6 +258,53 @@ export async function upsertCreditCard(card: CreditCard): Promise<void> {
 export async function deleteCreditCard(accountId: string): Promise<void> {
   const db = await openDatabase();
   await db.execute("DELETE FROM credit_cards WHERE account_id = $1", [accountId]);
+}
+
+type DepositRow = {
+  account_id: string;
+  rate: number;
+  open_date: string;
+  close_date: string | null;
+  capitalization: Deposit["capitalization"];
+  plan_interest: number;
+};
+
+export async function listDeposits(): Promise<Deposit[]> {
+  const db = await openDatabase();
+  const rows = await db.select<DepositRow[]>(
+    `SELECT account_id, rate, open_date, close_date, capitalization, plan_interest
+       FROM deposits`
+  );
+  return rows.map((row) => ({
+    accountId: row.account_id,
+    rate: row.rate,
+    openDate: row.open_date,
+    closeDate: row.close_date,
+    capitalization: row.capitalization,
+    planInterest: row.plan_interest === 1
+  }));
+}
+
+export async function upsertDeposit(deposit: Deposit): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    `INSERT OR REPLACE INTO deposits
+       (account_id, rate, open_date, close_date, capitalization, plan_interest)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [
+      deposit.accountId,
+      deposit.rate,
+      deposit.openDate,
+      deposit.closeDate,
+      deposit.capitalization,
+      deposit.planInterest ? 1 : 0
+    ]
+  );
+}
+
+export async function deleteDeposit(accountId: string): Promise<void> {
+  const db = await openDatabase();
+  await db.execute("DELETE FROM deposits WHERE account_id = $1", [accountId]);
 }
 
 export async function upsertCategory(category: Category): Promise<void> {

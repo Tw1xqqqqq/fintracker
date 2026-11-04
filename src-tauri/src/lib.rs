@@ -219,6 +219,21 @@ fn migrations() -> Vec<Migration> {
             );
         ",
         kind: MigrationKind::Up,
+    },
+    Migration {
+        version: 12,
+        description: "create_deposits",
+        sql: "
+            CREATE TABLE IF NOT EXISTS deposits (
+                account_id     TEXT PRIMARY KEY REFERENCES accounts(id),
+                rate           REAL NOT NULL DEFAULT 0,
+                open_date      TEXT NOT NULL,
+                close_date     TEXT,
+                capitalization TEXT NOT NULL DEFAULT 'none',
+                plan_interest  INTEGER NOT NULL DEFAULT 0
+            );
+        ",
+        kind: MigrationKind::Up,
     }]
 }
 
