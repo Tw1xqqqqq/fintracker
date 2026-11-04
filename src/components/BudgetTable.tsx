@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeftRight,
   CalendarSync,
   ChevronDown,
   ChevronLeft,
@@ -9,7 +10,8 @@ import {
   Pencil,
   Plus,
   Sparkles,
-  TriangleAlert
+  TriangleAlert,
+  Wallet
 } from "lucide-react";
 import type { Account, Category, Operation, RecurringRule } from "../types";
 import type { Week } from "../lib/finance";
@@ -18,9 +20,15 @@ import {
   confirmedOperationId,
   parseRecurringOccurrenceId,
   pendingRecurringOperations,
-  suggestWeeklyAverages,
-  sumAccountBalances
+  suggestWeeklyAverages
 } from "../lib/finance";
+import {
+  accountsInGroup,
+  initialGroupBalance,
+  liquidBalanceSeries,
+  liquidWeekFlows,
+  transferFlows
+} from "../lib/accounts";
 import {
   categoryUsage,
   deleteCategory,
@@ -40,7 +48,7 @@ import { CategoryForm } from "./CategoryForm";
 import { OperationPopover } from "./OperationPopover";
 import { CellOperationsPopover } from "./CellOperationsPopover";
 import { OperationForm } from "./OperationForm";
-import { defaultDateInWeek, shortDate, todayIso } from "../lib/dates";
+import { defaultDateInWeek, newId, shortDate, todayIso } from "../lib/dates";
 import { deleteBlockedMessage, errorText } from "../lib/usage";
 
 const PAGE_SIZE = 6;
@@ -92,9 +100,14 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   const [error, setError] = useState<string | null>(null);
 
   const [mode, setMode] = useState<Mode>("plan");
-  const [collapsed, setCollapsed] = useState<{ income: boolean; expense: boolean }>({
+  const [collapsed, setCollapsed] = useState<{
+    income: boolean;
+    expense: boolean;
+    transfers: boolean;
+  }>({
     income: false,
-    expense: false
+    expense: false,
+    transfers: false
   });
   // Алерт о неподтверждённых регулярных операциях можно скрыть до перезагрузки данных.
   const [alertDismissed, setAlertDismissed] = useState(false);
@@ -118,6 +131,9 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   const [cellError, setCellError] = useState<string | null>(null);
   const [editingOperation, setEditingOperation] = useState<Operation | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
+  // Заготовка перевода из ячейки раздела «Переводы».
+  const [transferDraft, setTransferDraft] = useState<Operation | null>(null);
+  const [transferError, setTransferError] = useState<string | null>(null);
 
   const today = todayIso();
   const currentIdx = useMemo(
@@ -151,7 +167,9 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
       setDefaultAccountId(
         accounts.find((account) => account.id === primaryId)?.id ?? accounts[0]?.id ?? ""
       );
-      setInitialBalance(sumAccountBalances(accounts));
+      // Цепочка «Итогового баланса» идёт от свободных денег: долг по кредиткам
+      // и деньги на вкладах в неё не входят.
+      setInitialBalance(initialGroupBalance(accounts, "liquid"));
       setCategories([...cats].sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -262,15 +280,64 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     };
   }, [weeks, incomeCats, expenseCats, planAt, factAt, initialBalance]);
 
+  const depositAccounts = useMemo(() => accountsInGroup(accounts, "deposit"), [accounts]);
+  const creditAccounts = useMemo(() => accountsInGroup(accounts, "credit"), [accounts]);
+
+  // Строки раздела «Переводы»: вклады одной парой строк, кредитки — по карте.
+  type TransferRow =
+    | { key: string; label: string; kind: "toDeposit" }
+    | { key: string; label: string; kind: "fromDeposit" }
+    | { key: string; label: string; kind: "repay"; cardId: string };
+
+  const transferRows = useMemo<TransferRow[]>(() => {
+    const rows: TransferRow[] = [];
+    if (depositAccounts.length > 0) {
+      rows.push({ key: "to-deposit", label: "На депозиты", kind: "toDeposit" });
+      rows.push({ key: "from-deposit", label: "С депозитов", kind: "fromDeposit" });
+    }
+    for (const card of creditAccounts) {
+      rows.push({ key: `repay:${card.id}`, label: `Погашение: ${card.name}`, kind: "repay", cardId: card.id });
+    }
+    return rows;
+  }, [depositAccounts, creditAccounts]);
+
+  // Потоки переводов по неделям, отдельно план и факт.
+  const transferByWeek = useMemo(
+    () =>
+      weeks.map((week) => ({
+        planned: transferFlows(accounts, operations, "planned", week.start, week.end),
+        actual: transferFlows(accounts, operations, "actual", week.start, week.end)
+      })),
+    [accounts, operations, weeks]
+  );
+
+  const transferAt = useCallback(
+    (row: TransferRow, weekIdx: number, status: Operation["status"]) => {
+      const flows = transferByWeek[weekIdx]?.[status === "planned" ? "planned" : "actual"];
+      if (!flows) return 0;
+      if (row.kind === "toDeposit") return flows.toDeposit;
+      if (row.kind === "fromDeposit") return flows.fromDeposit;
+      return flows.repayByCard.get(row.cardId) ?? 0;
+    },
+    [transferByWeek]
+  );
+
+  // Цепочка свободных денег: «Итоговый баланс» и кассовые разрывы считаются
+  // по ней, а не по сумме всех счетов.
+  const liquid = useMemo(() => {
+    const flows = liquidWeekFlows(accounts, operations, weeks);
+    return liquidBalanceSeries(initialBalance, flows);
+  }, [accounts, operations, weeks, initialBalance]);
+
   // «Данные за неделю заполнены» — по неделе есть хотя бы один факт.
   const weekHasFact = useMemo(
     () => weeks.map((_, i) => totals.factIncome[i] + totals.factExpense[i] > 0),
     [weeks, totals]
   );
 
-  // Остаток на конец недели: факт, если неделя заполнена, иначе прогноз по
-  // плану — от остатка предыдущей недели (с учётом её факта).
-  const runningEffective = totals.runningEffective;
+  // Остаток свободных денег на конец недели: факт, если неделя заполнена,
+  // иначе прогноз по плану — от остатка предыдущей недели.
+  const runningEffective = liquid.effective;
 
   // Кассовый разрыв — неделя, на конец которой остаток уходит в минус.
   const cashGapWeeks = useMemo(() => runningEffective.map((value) => value < 0), [runningEffective]);
@@ -521,6 +588,65 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     );
   };
 
+  // Ячейка раздела «Переводы»: клик открывает перевод с уже выбранными счетами.
+  const openTransfer = (row: TransferRow, weekIdx: number) => {
+    const week = weeks[weekIdx];
+    if (!week) return;
+    const primary = defaultAccountId;
+    const deposit = depositAccounts[0]?.id ?? "";
+    const source = row.kind === "fromDeposit" ? deposit : primary;
+    const target =
+      row.kind === "toDeposit" ? deposit : row.kind === "fromDeposit" ? primary : row.cardId;
+    if (!source || !target) {
+      setError("Для перевода нужны оба счёта: проверьте основной счёт и счёт вклада.");
+      return;
+    }
+    setTransferError(null);
+    setTransferDraft({
+      id: newId("op"),
+      date: mode === "fact" ? defaultDateInWeek(week, today) : week.start,
+      type: "transfer",
+      status: mode === "fact" ? "actual" : "planned",
+      categoryId: null,
+      accountId: source,
+      amount: 0,
+      description: "",
+      sourceAccountId: source,
+      targetAccountId: target,
+      transferId: null
+    });
+  };
+
+  const handleSaveTransfer = async (operation: Operation) => {
+    try {
+      await upsertOperation(operation);
+      setTransferDraft(null);
+      await load();
+    } catch (err) {
+      setTransferError(errorText(err));
+    }
+  };
+
+  const transferCell = (row: TransferRow, globalIdx: number) => {
+    const plan = transferAt(row, globalIdx, "planned");
+    const fact = transferAt(row, globalIdx, "actual");
+    const value = mode === "plan" ? plan : fact;
+    return (
+      <button
+        type="button"
+        className="budget-entry-cell"
+        aria-label={`${row.label}, ${shortDate(weeks[globalIdx].start)}`}
+        onClick={() => openTransfer(row, globalIdx)}
+      >
+        {value ? money(value) : mode === "fact" && plan ? (
+          <span className="budget-ghost">{money(plan)}</span>
+        ) : (
+          dash
+        )}
+      </button>
+    );
+  };
+
   const showTip = (event: React.MouseEvent<HTMLElement>, text: string | null) => {
     if (!text) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -597,7 +723,7 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   };
 
   const runningValue = (globalIdx: number) => {
-    if (mode === "plan") return money(totals.runningPlan[globalIdx]);
+    if (mode === "plan") return money(liquid.plan[globalIdx]);
 
     const value = runningEffective[globalIdx];
     const isGap = value < 0;
@@ -607,7 +733,7 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
         <span className={isGap ? "amount amount--expense" : "budget-ghost"}>{money(value)}</span>
       );
     }
-    const delta = value - totals.runningPlan[globalIdx];
+    const delta = value - liquid.plan[globalIdx];
     return (
       <>
         <span className={isGap ? "budget-cell-main amount--expense" : "budget-cell-main"}>
@@ -952,8 +1078,67 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
                 </tr>
               ))}
 
+            {transferRows.length > 0 && (
+              <tr className="budget-row--group">
+                <td>
+                  <span className="budget-group-cell">
+                    <button
+                      type="button"
+                      className="budget-group-toggle"
+                      aria-label={collapsed.transfers ? "Развернуть переводы" : "Свернуть переводы"}
+                      onClick={() => setCollapsed((c) => ({ ...c, transfers: !c.transfers }))}
+                    >
+                      {collapsed.transfers ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                    Переводы
+                    <span
+                      className="budget-cat-recurring"
+                      aria-label="Переводы между своими счетами не доход и не расход, но меняют свободные деньги"
+                      onMouseEnter={(event) =>
+                        showTip(
+                          event,
+                          "Переводы между своими счетами\nНе доход и не расход, но меняют свободные деньги"
+                        )
+                      }
+                      onMouseLeave={hideTip}
+                    >
+                      <ArrowLeftRight size={14} />
+                    </span>
+                  </span>
+                </td>
+                {pageWeeks.map((_, i) => weekTd(pageStart + i, dash))}
+              </tr>
+            )}
+
+            {!collapsed.transfers &&
+              transferRows.map((row) => (
+                <tr key={row.key}>
+                  <td>
+                    <span className="budget-cat-cell">{row.label}</span>
+                  </td>
+                  {pageWeeks.map((_, i) => weekTd(pageStart + i, transferCell(row, pageStart + i)))}
+                </tr>
+              ))}
+
             <tr className="budget-row--total">
-              <td>Итоговый баланс</td>
+              <td>
+                <span className="budget-cat-cell">
+                  Итоговый баланс
+                  <span
+                    className="budget-cat-recurring"
+                    aria-label="Свободные деньги: наличные и дебетовые карты, без вкладов и долга по кредиткам"
+                    onMouseEnter={(event) =>
+                      showTip(
+                        event,
+                        "Свободные деньги\nНаличные и дебетовые карты, без вкладов и долга по кредиткам"
+                      )
+                    }
+                    onMouseLeave={hideTip}
+                  >
+                    <Wallet size={14} />
+                  </span>
+                </span>
+              </td>
               {pageWeeks.map((_, i) => weekTd(pageStart + i, runningValue(pageStart + i)))}
             </tr>
           </tbody>
@@ -1009,6 +1194,20 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
           onDelete={handleDeleteEdited}
           onCancel={() => setEditingOperation(null)}
           error={editError}
+        />
+      )}
+
+      {transferDraft !== null && (
+        <OperationForm
+          accounts={accounts}
+          categories={categories}
+          initial={transferDraft}
+          title="Новый перевод"
+          canDelete={false}
+          onSave={handleSaveTransfer}
+          onDelete={() => setTransferDraft(null)}
+          onCancel={() => setTransferDraft(null)}
+          error={transferError}
         />
       )}
 

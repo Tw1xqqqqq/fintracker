@@ -11,6 +11,10 @@ type OperationFormProps = {
   onDelete: (id: string) => void;
   onCancel: () => void;
   error?: string | null;
+  // Заголовок и кнопка «Удалить» различают правку существующей операции и
+  // заготовку новой (например, перевода из ячейки раздела «Переводы»).
+  title?: string;
+  canDelete?: boolean;
 };
 
 export function OperationForm({
@@ -20,7 +24,9 @@ export function OperationForm({
   onSave,
   onDelete,
   onCancel,
-  error = null
+  error = null,
+  title,
+  canDelete = true
 }: OperationFormProps) {
   const defaultSourceAccountId = initial?.sourceAccountId ?? initial?.accountId ?? accounts[0]?.id ?? "";
   const [date, setDate] = useState(initial?.date ?? todayIso());
@@ -34,7 +40,7 @@ export function OperationForm({
     initial?.targetAccountId ?? accounts.find((account) => account.id !== defaultSourceAccountId)?.id ?? ""
   );
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
-  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
+  const [amount, setAmount] = useState(initial && initial.amount > 0 ? String(initial.amount) : "");
   const [description, setDescription] = useState(initial?.description ?? "");
 
   const availableCategories = useMemo(
@@ -79,7 +85,7 @@ export function OperationForm({
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(event) => event.stopPropagation()}>
         <header className="modal-header">
-          <h2>{initial ? "Редактировать операцию" : "Новая операция"}</h2>
+          <h2>{title ?? (initial ? "Редактировать операцию" : "Новая операция")}</h2>
           <button type="button" className="icon-button" onClick={onCancel} aria-label="Закрыть">
             <X size={18} />
           </button>
@@ -189,7 +195,7 @@ export function OperationForm({
           {error && <p className="error-text">{error}</p>}
 
           <div className="modal-actions">
-            {initial ? (
+            {initial && canDelete ? (
               <button
                 type="button"
                 className="danger-button"

@@ -7,6 +7,8 @@ import {
   groupBalancesAt,
   initialGroupBalance,
   liquidBalanceAt,
+  liquidBalanceSeries,
+  liquidWeekFlows,
   transferFlows
 } from "./accounts";
 
@@ -184,5 +186,102 @@ describe("transferFlows", () => {
     const flows = transferFlows(accounts, transfer("main", "cash", 1000), "actual", "2026-11-01", "2026-11-30");
     expect(flows).toMatchObject({ toDeposit: 0, fromDeposit: 0 });
     expect(flows.repayByCard.size).toBe(0);
+  });
+});
+
+const weeks = [
+  { start: "2026-11-02", end: "2026-11-08" },
+  { start: "2026-11-09", end: "2026-11-15" },
+  { start: "2026-11-16", end: "2026-11-22" }
+];
+
+describe("liquidWeekFlows", () => {
+  it("раскладывает доход и расход по свободным счетам по неделям", () => {
+    const operations = [
+      op({ accountId: "main", amount: 30000, type: "income", date: "2026-11-03" }),
+      op({ accountId: "cash", amount: 4000, date: "2026-11-04" }),
+      op({ accountId: "main", amount: 1000, date: "2026-11-10" })
+    ];
+    const flows = liquidWeekFlows(accounts, operations, weeks);
+    expect(flows[0]).toMatchObject({ incomeActual: 30000, expenseActual: 4000, hasActual: true });
+    expect(flows[1]).toMatchObject({ expenseActual: 1000 });
+    expect(flows[2]).toMatchObject({ expenseActual: 0, hasActual: false });
+  });
+
+  it("покупка по кредитке в движение свободных денег не попадает", () => {
+    const flows = liquidWeekFlows(accounts, [op({ accountId: "cc", amount: 7000, date: "2026-11-03" })], weeks);
+    expect(flows[0]).toMatchObject({ expenseActual: 0, hasActual: false });
+  });
+
+  it("перевод на вклад — отток, снятие с вклада — приток", () => {
+    const operations = [
+      ...transfer("main", "dep", 20000, "2026-11-03"),
+      ...transfer("dep", "cash", 5000, "2026-11-10")
+    ];
+    const flows = liquidWeekFlows(accounts, operations, weeks);
+    expect(flows[0].transferOutActual).toBe(20000);
+    expect(flows[1].transferOutActual).toBe(-5000);
+  });
+
+  it("перевод между своими счетами движения не даёт", () => {
+    const flows = liquidWeekFlows(accounts, transfer("main", "cash", 3000, "2026-11-03"), weeks);
+    expect(flows[0].transferOutActual).toBe(0);
+  });
+
+  it("погашение кредитки — отток свободных денег", () => {
+    const flows = liquidWeekFlows(accounts, transfer("main", "cc", 8000, "2026-11-03"), weeks);
+    expect(flows[0].transferOutActual).toBe(8000);
+  });
+
+  it("план и факт считаются отдельно", () => {
+    const operations = [
+      ...transfer("main", "dep", 10000, "2026-11-03", "planned"),
+      op({ accountId: "main", amount: 2000, date: "2026-11-04", status: "planned" })
+    ];
+    const flows = liquidWeekFlows(accounts, operations, weeks);
+    expect(flows[0]).toMatchObject({
+      transferOutPlan: 10000,
+      expensePlan: 2000,
+      transferOutActual: 0,
+      hasActual: false
+    });
+  });
+});
+
+describe("liquidBalanceSeries", () => {
+  it("переводы на вклад уменьшают итоговый баланс, покупки по кредитке — нет", () => {
+    const operations = [
+      ...transfer("main", "dep", 20000, "2026-11-03"),
+      op({ accountId: "cc", amount: 15000, date: "2026-11-04" })
+    ];
+    const flows = liquidWeekFlows(accounts, operations, weeks);
+    const series = liquidBalanceSeries(60000, flows);
+    expect(series.effective).toEqual([40000, 40000, 40000]);
+  });
+
+  it("остаток переносится на следующую неделю", () => {
+    const operations = [
+      op({ accountId: "main", amount: 10000, type: "income", date: "2026-11-03" }),
+      op({ accountId: "main", amount: 4000, date: "2026-11-10" })
+    ];
+    const series = liquidBalanceSeries(0, liquidWeekFlows(accounts, operations, weeks));
+    expect(series.effective).toEqual([10000, 6000, 6000]);
+  });
+
+  it("неделя без факта считается от фактического остатка прошлой недели", () => {
+    const operations = [
+      op({ accountId: "main", amount: 25000, date: "2026-11-03" }),
+      op({ accountId: "main", amount: 5000, date: "2026-11-10", status: "planned" })
+    ];
+    const flows = liquidWeekFlows(accounts, operations, weeks);
+    const series = liquidBalanceSeries(60000, flows);
+    expect(series.plan).toEqual([60000, 55000, 55000]);
+    expect(series.effective).toEqual([35000, 30000, 30000]);
+  });
+
+  it("кассовый разрыв виден по свободным деньгам", () => {
+    const operations = transfer("main", "dep", 70000, "2026-11-03");
+    const series = liquidBalanceSeries(60000, liquidWeekFlows(accounts, operations, weeks));
+    expect(series.effective[0]).toBe(-10000);
   });
 });

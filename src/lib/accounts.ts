@@ -102,6 +102,124 @@ export function initialGroupBalance(accounts: Account[], group: AccountGroup): n
   );
 }
 
+export interface LiquidWeekFlow {
+  weekStart: string;
+  incomePlan: number;
+  expensePlan: number;
+  transferOutPlan: number; // нетто-отток со свободных денег по переводам
+  incomeActual: number;
+  expenseActual: number;
+  transferOutActual: number;
+  hasActual: boolean;
+}
+
+// Движение свободных денег по неделям. В доход и расход попадают только
+// операции по свободным счетам: покупка по кредитке свободных денег не
+// уменьшает, она увеличивает долг. Переводы учитываются по ноге: со
+// свободного счёта — отток, на свободный счёт — приток, поэтому перевод между
+// своими счетами даёт ноль.
+export function liquidWeekFlows(
+  accounts: Account[],
+  operations: Operation[],
+  weeks: { start: string; end: string }[]
+): LiquidWeekFlow[] {
+  const groupById = new Map(accounts.map((account) => [account.id, accountGroup(account)]));
+  const isLiquid = (accountId: string | null | undefined) =>
+    Boolean(accountId) && groupById.get(accountId as string) === "liquid";
+
+  const flows: LiquidWeekFlow[] = weeks.map((week) => ({
+    weekStart: week.start,
+    incomePlan: 0,
+    expensePlan: 0,
+    transferOutPlan: 0,
+    incomeActual: 0,
+    expenseActual: 0,
+    transferOutActual: 0,
+    hasActual: false
+  }));
+
+  for (const operation of operations) {
+    const index = weeks.findIndex(
+      (week) => operation.date >= week.start && operation.date <= week.end
+    );
+    if (index < 0) continue;
+    const flow = flows[index];
+    const actual = operation.status === "actual";
+
+    if (operation.type === "transfer") {
+      let delta = 0;
+      if (operation.accountId === operation.sourceAccountId && isLiquid(operation.sourceAccountId)) {
+        delta = operation.amount;
+      } else if (
+        operation.accountId === operation.targetAccountId &&
+        isLiquid(operation.targetAccountId)
+      ) {
+        delta = -operation.amount;
+      }
+      if (delta === 0) continue;
+      if (actual) {
+        flow.transferOutActual += delta;
+        flow.hasActual = true;
+      } else {
+        flow.transferOutPlan += delta;
+      }
+      continue;
+    }
+
+    if (!isLiquid(operation.accountId)) continue;
+    if (operation.type === "income") {
+      if (actual) {
+        flow.incomeActual += operation.amount;
+        flow.hasActual = true;
+      } else flow.incomePlan += operation.amount;
+    } else {
+      if (actual) {
+        flow.expenseActual += operation.amount;
+        flow.hasActual = true;
+      } else flow.expensePlan += operation.amount;
+    }
+  }
+
+  return flows.map((flow) => ({
+    ...flow,
+    incomePlan: round(flow.incomePlan),
+    expensePlan: round(flow.expensePlan),
+    transferOutPlan: round(flow.transferOutPlan),
+    incomeActual: round(flow.incomeActual),
+    expenseActual: round(flow.expenseActual),
+    transferOutActual: round(flow.transferOutActual)
+  }));
+}
+
+export interface LiquidBalances {
+  plan: number[]; // остаток свободных денег только по плану
+  effective: number[]; // факт, где он есть, иначе план — от остатка прошлой недели
+}
+
+// Цепочка остатка свободных денег по неделям. Неделя без факта считается от
+// остатка предыдущей недели (с учётом её факта), как и «Итоговый баланс»:
+// иначе прогноз «забывал» бы реальные доходы и расходы.
+export function liquidBalanceSeries(
+  initialLiquid: number,
+  flows: LiquidWeekFlow[]
+): LiquidBalances {
+  let plan = initialLiquid;
+  let effective = initialLiquid;
+  const planSeries: number[] = [];
+  const effectiveSeries: number[] = [];
+
+  for (const flow of flows) {
+    const planNet = flow.incomePlan - flow.expensePlan - flow.transferOutPlan;
+    const actualNet = flow.incomeActual - flow.expenseActual - flow.transferOutActual;
+    plan = round(plan + planNet);
+    effective = round(effective + (flow.hasActual ? actualNet : planNet));
+    planSeries.push(plan);
+    effectiveSeries.push(effective);
+  }
+
+  return { plan: planSeries, effective: effectiveSeries };
+}
+
 export interface TransferFlows {
   toDeposit: number; // переводы со свободных денег на вклады
   fromDeposit: number; // переводы с вкладов на свободные деньги
