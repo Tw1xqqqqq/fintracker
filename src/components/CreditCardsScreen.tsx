@@ -14,6 +14,7 @@ import {
   listAccounts,
   listCreditCards,
   listOperations,
+  regenerateCardRepayments,
   upsertAccount,
   upsertCreditCard
 } from "../lib/repository";
@@ -125,6 +126,8 @@ export function CreditCardsScreen() {
     try {
       await upsertAccount(account);
       await upsertCreditCard(card);
+      // Условия карты меняют даты и суммы выписок — автоплан пересобирается.
+      await regenerateCardRepayments();
       setFormOpen(false);
       await reload();
     } catch (err) {
@@ -141,6 +144,7 @@ export function CreditCardsScreen() {
       }
       await deleteCreditCard(accountId);
       await deleteAccount(accountId);
+      await regenerateCardRepayments();
       setFormOpen(false);
       await reload();
     } catch (err) {

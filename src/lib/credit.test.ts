@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CreditCard, Operation } from "../types";
-import { creditCardState, statementDateOnOrAfter } from "./credit";
+import { creditCardState, plannedRepayments, statementDateOnOrAfter } from "./credit";
 
 const card: CreditCard = {
   accountId: "cc",
@@ -162,5 +162,116 @@ describe("creditCardState", () => {
     );
     expect(state.debt).toBe(0);
     expect(state.status).toBe("clear");
+  });
+});
+
+describe("plannedRepayments", () => {
+  it("ставит погашение на дату платежа минус буфер, на сумму выписки", () => {
+    const plan = plannedRepayments(card, 0, [purchase("2026-10-10", 5000)], SINCE, "2026-11-30");
+    expect(plan).toHaveLength(1);
+    expect(plan[0]).toMatchObject({
+      id: "cc-repay:cc:2026-10-15",
+      statementDate: "2026-10-15",
+      dueDate: "2026-11-04",
+      date: "2026-11-01",
+      amount: 5000
+    });
+  });
+
+  it("покупка до выписки увеличивает её, покупка после уходит в следующую", () => {
+    const plan = plannedRepayments(
+      card,
+      0,
+      [purchase("2026-10-10", 5000), purchase("2026-10-14", 1000), purchase("2026-10-20", 700)],
+      SINCE,
+      "2026-11-30"
+    );
+    expect(plan.map((item) => [item.statementDate, item.amount])).toEqual([
+      ["2026-10-15", 6000],
+      ["2026-11-15", 700]
+    ]);
+  });
+
+  it("учитывает плановые покупки, а не только факт", () => {
+    const plan = plannedRepayments(
+      card,
+      0,
+      [purchase("2026-10-10", 4000, "planned")],
+      SINCE,
+      "2026-11-30"
+    );
+    expect(plan[0].amount).toBe(4000);
+  });
+
+  it("полное погашение убирает плановый перевод", () => {
+    const plan = plannedRepayments(
+      card,
+      0,
+      [purchase("2026-10-10", 5000), repay("2026-10-20", 5000)],
+      SINCE,
+      "2026-11-30"
+    );
+    expect(plan).toHaveLength(0);
+  });
+
+  it("частичное погашение уменьшает плановую сумму", () => {
+    const plan = plannedRepayments(
+      card,
+      0,
+      [purchase("2026-10-10", 5000), repay("2026-10-20", 2000)],
+      SINCE,
+      "2026-11-30"
+    );
+    expect(plan[0].amount).toBe(3000);
+  });
+
+  it("платёж после даты платежа плановую сумму выписки не уменьшает", () => {
+    const plan = plannedRepayments(
+      card,
+      0,
+      [purchase("2026-10-10", 5000), repay("2026-11-10", 5000)],
+      SINCE,
+      "2026-11-30"
+    );
+    expect(plan[0].amount).toBe(5000);
+  });
+
+  it("сам плановый перевод погашения в расчёт выписки не входит", () => {
+    const auto: Operation = {
+      id: "cc-repay:cc:2026-10-15",
+      date: "2026-11-01",
+      type: "transfer",
+      status: "planned",
+      categoryId: null,
+      accountId: "cc",
+      amount: 5000,
+      description: "",
+      sourceAccountId: "main",
+      targetAccountId: "cc",
+      transferId: "cc-repay:cc:2026-10-15"
+    };
+    const plan = plannedRepayments(card, 0, [purchase("2026-10-10", 5000), auto], SINCE, "2026-11-30");
+    expect(plan).toHaveLength(1);
+    expect(plan[0].amount).toBe(5000);
+  });
+
+  it("id детерминированный: повторный расчёт даёт те же записи", () => {
+    const operations = [purchase("2026-10-10", 5000)];
+    const first = plannedRepayments(card, 0, operations, SINCE, "2026-11-30");
+    const second = plannedRepayments(card, 0, operations, SINCE, "2026-11-30");
+    expect(first).toEqual(second);
+  });
+
+  it("стартовый долг попадает в первую выписку", () => {
+    const plan = plannedRepayments(card, 3000, [], "2026-10-01", "2026-10-31");
+    expect(plan[0]).toMatchObject({ statementDate: "2026-10-15", amount: 3000 });
+  });
+
+  it("без долга плана нет", () => {
+    expect(plannedRepayments(card, 0, [], SINCE, "2026-12-31")).toEqual([]);
+  });
+
+  it("горизонт раньше начала учёта плана не даёт", () => {
+    expect(plannedRepayments(card, 5000, [], "2026-10-01", "2026-09-01")).toEqual([]);
   });
 });

@@ -38,6 +38,7 @@ import {
   listCategories,
   listOperations,
   listRecurringRules,
+  regenerateCardRepayments,
   regenerateRecurringOperations,
   updateRecurringOccurrence,
   upsertCategory,
@@ -464,6 +465,8 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
         await upsertRecurringRule(recurringRule);
         await regenerateRecurringOperations();
       }
+      // Покупка по карте меняет её выписку, поэтому автоплан пересобирается.
+      await regenerateCardRepayments();
       setOperationContext(null);
       await load();
     } catch (err) {
@@ -620,6 +623,7 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
   const handleSaveTransfer = async (operation: Operation) => {
     try {
       await upsertOperation(operation);
+      await regenerateCardRepayments();
       setTransferDraft(null);
       await load();
     } catch (err) {

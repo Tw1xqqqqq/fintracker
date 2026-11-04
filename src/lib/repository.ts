@@ -14,6 +14,7 @@ import {
   parseRecurringOccurrenceId,
   recurringRuleOccurrences
 } from "./finance";
+import { plannedRepayments, REPAY_ID_PREFIX } from "./credit";
 import { newId, todayIso } from "./dates";
 import { openDatabase } from "./db";
 import { buildInsertBatches } from "./sqlBatch";
@@ -561,6 +562,70 @@ export async function regenerateRecurringOperations(today = todayIso()): Promise
   await insertRows(
     `INSERT OR IGNORE INTO operations
        (id, date, type, status, category_id, account_id, amount, description, recurring_id)`,
+    rows
+  );
+}
+
+// Пересобирает автоплан погашения кредиток: по каждой непогашенной выписке
+// ставит плановый перевод «основной счёт → карта» на дату платежа минус буфер.
+// Переводы прошлых дат не трогаются (это история), будущие пересоздаются с
+// детерминированными id, поэтому пересчёт не плодит дублей.
+export async function regenerateCardRepayments(today = todayIso()): Promise<void> {
+  const db = await openDatabase();
+  const cards = await listCreditCards();
+  await db.execute(
+    `DELETE FROM operations WHERE id LIKE '${REPAY_ID_PREFIX}:%' AND date >= $1`,
+    [today]
+  );
+  if (cards.length === 0) return;
+
+  const [accounts, operations, startSetting, endSetting, primaryId] = await Promise.all([
+    listAccounts(),
+    listOperations(),
+    getSetting("startDate"),
+    getSetting("endDate"),
+    getSetting("primaryAccountId")
+  ]);
+
+  const source =
+    accounts.find((account) => account.id === primaryId) ??
+    accounts.find((account) => account.type === "card") ??
+    accounts.find((account) => account.type === "cash");
+  if (!source) return;
+
+  const since = startSetting ?? "2000-01-01";
+  const horizon = endSetting && endSetting >= today ? endSetting : oneYearAfter(today);
+
+  const rows: unknown[][] = [];
+  for (const card of cards) {
+    const account = accounts.find((item) => item.id === card.accountId);
+    if (!account || account.id === source.id) continue;
+    const startDebt = Math.max(0, -account.balance);
+    for (const item of plannedRepayments(card, startDebt, operations, since, horizon)) {
+      if (item.date < today) continue;
+      // Перевод хранится двумя ногами с общим transfer_id, как и обычный.
+      for (const leg of ["out", "in"] as const) {
+        rows.push([
+          `${item.id}:${leg}`,
+          item.date,
+          "transfer",
+          "planned",
+          null,
+          leg === "out" ? source.id : card.accountId,
+          item.amount,
+          `Погашение выписки от ${item.statementDate}`,
+          source.id,
+          card.accountId,
+          item.id
+        ]);
+      }
+    }
+  }
+
+  await insertRows(
+    `INSERT OR IGNORE INTO operations
+       (id, date, type, status, category_id, account_id, amount, description,
+        source_account_id, target_account_id, transfer_id)`,
     rows
   );
 }

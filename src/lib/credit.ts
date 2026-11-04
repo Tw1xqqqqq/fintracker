@@ -31,6 +31,18 @@ export interface CreditCardState {
 
 export const SOON_DAYS = 5;
 
+// Префикс плановых погашений, которые строит автоплан. В расчёт выписок они не
+// входят: иначе план погашал бы собственный план.
+export const REPAY_ID_PREFIX = "cc-repay";
+
+export function repaymentPlanId(accountId: string, statementDate: string): string {
+  return `${REPAY_ID_PREFIX}:${accountId}:${statementDate}`;
+}
+
+export function isRepaymentPlanId(id: string): boolean {
+  return id.startsWith(`${REPAY_ID_PREFIX}:`);
+}
+
 function parse(iso: string): Date {
   return new Date(`${iso}T00:00:00Z`);
 }
@@ -168,4 +180,74 @@ export function creditCardState(
     status,
     daysLeft
   };
+}
+
+export interface RepaymentPlanItem {
+  id: string; // детерминированный: cc-repay:<карта>:<дата выписки>
+  cardId: string;
+  statementDate: string;
+  date: string; // когда платить по плану: дата платежа минус буфер
+  dueDate: string;
+  amount: number; // долг выписки минус уже внесённые платежи
+}
+
+// Автоплан погашения: по каждой непогашенной выписке (в том числе будущей —
+// по плановым покупкам) ставится плановый перевод «свой счёт → карта» на
+// остаток выписки, на дату платежа минус буфер. Учитываются и фактические, и
+// плановые операции по карте, кроме самих плановых погашений.
+export function plannedRepayments(
+  card: CreditCard,
+  startDebt: number,
+  operations: Operation[],
+  since: string,
+  horizon: string
+): RepaymentPlanItem[] {
+  if (horizon < since) return [];
+
+  const events = operations
+    .filter((op) => !isRepaymentPlanId(op.id) && op.date >= since && op.date <= horizon)
+    .map((op) => ({ date: op.date, delta: debtDelta(op, card.accountId) }))
+    .filter((event) => event.delta !== 0);
+
+  const debtAt = (date: string) =>
+    events.reduce((sum, event) => (event.date <= date ? sum + event.delta : sum), startDebt);
+  const repaidBetween = (afterDate: string, untilDate: string) =>
+    events.reduce(
+      (sum, event) =>
+        event.date > afterDate && event.date <= untilDate && event.delta < 0
+          ? sum - event.delta
+          : sum,
+      0
+    );
+
+  const plan: RepaymentPlanItem[] = [];
+  let statementDate = statementDateOnOrAfter(since, card.statementDay);
+  let guard = 0;
+  while (statementDate <= horizon && guard < 600) {
+    guard += 1;
+    // Долг выписки накопительный, поэтому из него вычитаются погашения
+    // прошлых выписок, которые план уже поставил до этой даты: иначе один и
+    // тот же долг попал бы в план дважды.
+    const plannedPaid = plan.reduce(
+      (sum, item) => (item.date <= statementDate ? sum + item.amount : sum),
+      0
+    );
+    const statementDebt = round(Math.max(0, debtAt(statementDate) - plannedPaid));
+    const dueDate = addDaysIso(statementDate, card.paymentDays);
+    const paid = Math.min(statementDebt, repaidBetween(statementDate, dueDate));
+    const amount = round(statementDebt - paid);
+    if (amount > 0) {
+      plan.push({
+        id: repaymentPlanId(card.accountId, statementDate),
+        cardId: card.accountId,
+        statementDate,
+        date: addDaysIso(dueDate, -card.repayBufferDays),
+        dueDate,
+        amount
+      });
+    }
+    statementDate = nextStatementDate(statementDate, card.statementDay);
+  }
+
+  return plan;
 }
