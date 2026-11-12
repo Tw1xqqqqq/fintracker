@@ -2694,3 +2694,41 @@ h1 {
   accent-color: var(--primary);
   cursor: pointer;
 }
+
+/* CC-6: кнопки на карточке кредитки и сводка в диалоге погашения */
+.cc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.cc-actions button {
+  padding: 8px 14px;
+  font-size: 14px;
+}
+
+.repay-recap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sidebar);
+}
+
+.repay-recap-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.field-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted);
+}

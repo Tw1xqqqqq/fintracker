@@ -251,3 +251,44 @@ export function plannedRepayments(
 
   return plan;
 }
+
+// Что подставить в диалог «Отметить погашение» (CC-6). Отдельная функция, а не
+// логика в компоненте: сумму и дату проверяют тесты.
+export interface RepaymentDraft {
+  amount: number; // сколько вносим по умолчанию
+  date: string; // дата операции
+  statementDate: string | null; // выписка, которую гасим (null — гасим весь долг)
+  dueDate: string | null; // последний день без процентов по этой выписке
+  target: "statement" | "debt" | "none"; // что именно гасим
+}
+
+// status = actual — «погасил сегодня», датой берётся today.
+// status = planned — «поставить в план», датой берётся payBy (дата платежа
+// минус буфер); если эта дата уже прошла, план ставится на сегодня.
+export function repaymentDraft(
+  state: CreditCardState,
+  today: string,
+  status: "actual" | "planned"
+): RepaymentDraft {
+  const due = state.nextDue;
+  if (due && due.remaining > 0) {
+    const planDate = due.payBy < today ? today : due.payBy;
+    return {
+      amount: round(due.remaining),
+      date: status === "planned" ? planDate : today,
+      statementDate: due.statementDate,
+      dueDate: due.dueDate,
+      target: "statement"
+    };
+  }
+  if (state.debt > 0) {
+    return {
+      amount: round(state.debt),
+      date: today,
+      statementDate: null,
+      dueDate: null,
+      target: "debt"
+    };
+  }
+  return { amount: 0, date: today, statementDate: null, dueDate: null, target: "none" };
+}

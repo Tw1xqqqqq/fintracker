@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { CreditCard, Operation } from "../types";
-import { creditCardState, plannedRepayments, statementDateOnOrAfter } from "./credit";
+import {
+  creditCardState,
+  plannedRepayments,
+  repaymentDraft,
+  statementDateOnOrAfter
+} from "./credit";
 
 const card: CreditCard = {
   accountId: "cc",
@@ -273,5 +278,71 @@ describe("plannedRepayments", () => {
 
   it("горизонт раньше начала учёта плана не даёт", () => {
     expect(plannedRepayments(card, 5000, [], "2026-10-01", "2026-09-01")).toEqual([]);
+  });
+});
+
+describe("repaymentDraft", () => {
+  it("по непогашенной выписке подставляет её остаток", () => {
+    const state = creditCardState(card, 0, [purchase("2026-10-10", 12500)], "2026-10-01", "2026-11-05");
+    const draft = repaymentDraft(state, "2026-11-05", "actual");
+    expect(draft.target).toBe("statement");
+    expect(draft.amount).toBe(12500);
+    expect(draft.statementDate).toBe("2026-10-15");
+    expect(draft.dueDate).toBe("2026-11-04");
+  });
+
+  it("для факта датой берётся сегодня", () => {
+    const state = creditCardState(card, 0, [purchase("2026-10-10", 12500)], "2026-10-01", "2026-10-20");
+    expect(repaymentDraft(state, "2026-10-20", "actual").date).toBe("2026-10-20");
+  });
+
+  it("для плана датой берётся payBy — дата платежа минус буфер", () => {
+    const state = creditCardState(card, 0, [purchase("2026-10-10", 12500)], "2026-10-01", "2026-10-20");
+    // выписка 15.10, платёж 04.11, буфер 3 дня
+    expect(repaymentDraft(state, "2026-10-20", "planned").date).toBe("2026-11-01");
+  });
+
+  it("если payBy уже прошёл, план ставится на сегодня", () => {
+    const state = creditCardState(card, 0, [purchase("2026-10-10", 12500)], "2026-10-01", "2026-11-03");
+    expect(repaymentDraft(state, "2026-11-03", "planned").date).toBe("2026-11-03");
+  });
+
+  it("частичное погашение уменьшает подставляемую сумму", () => {
+    const state = creditCardState(
+      card,
+      0,
+      [purchase("2026-10-10", 12500), repay("2026-10-20", 2500)],
+      "2026-10-01",
+      "2026-11-01"
+    );
+    expect(repaymentDraft(state, "2026-11-01", "actual").amount).toBe(10000);
+  });
+
+  it("без выписки, но с долгом текущего периода подставляет весь долг", () => {
+    const state = creditCardState(card, 0, [purchase("2026-10-16", 3000)], "2026-10-01", "2026-10-20");
+    const draft = repaymentDraft(state, "2026-10-20", "actual");
+    expect(draft.target).toBe("debt");
+    expect(draft.amount).toBe(3000);
+    expect(draft.statementDate).toBeNull();
+  });
+
+  it("долга нет — гасить нечего", () => {
+    const state = creditCardState(card, 0, [], "2026-10-01", "2026-10-20");
+    const draft = repaymentDraft(state, "2026-10-20", "actual");
+    expect(draft.target).toBe("none");
+    expect(draft.amount).toBe(0);
+  });
+
+  it("выписка погашена полностью — предлагается только остаток текущего периода", () => {
+    const state = creditCardState(
+      card,
+      0,
+      [purchase("2026-10-10", 12500), repay("2026-10-20", 12500), purchase("2026-10-25", 4000)],
+      "2026-10-01",
+      "2026-11-01"
+    );
+    const draft = repaymentDraft(state, "2026-11-01", "actual");
+    expect(draft.target).toBe("debt");
+    expect(draft.amount).toBe(4000);
   });
 });

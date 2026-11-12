@@ -16,9 +16,11 @@ import {
   listOperations,
   regenerateCardRepayments,
   upsertAccount,
-  upsertCreditCard
+  upsertCreditCard,
+  upsertOperation
 } from "../lib/repository";
 import { CreditCardForm, DEFAULT_BUFFER_DAYS, DEFAULT_PAYMENT_DAYS } from "./CreditCardForm";
+import { RepayCardDialog } from "./RepayCardDialog";
 
 const STATUS_LABELS: Record<CreditStatus, string> = {
   clear: "Нет долга",
@@ -58,22 +60,28 @@ export function CreditCardsScreen() {
   const [editing, setEditing] = useState<Row | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
+  const [repaying, setRepaying] = useState<Row | null>(null);
+  const [repayError, setRepayError] = useState<string | null>(null);
+  const [primaryAccountId, setPrimaryAccountId] = useState<string | null>(null);
+
   const today = todayIso();
 
   async function reload() {
     setLoading(true);
     setError(null);
     try {
-      const [accs, cardList, ops, startDate] = await Promise.all([
+      const [accs, cardList, ops, startDate, primary] = await Promise.all([
         listAccounts(),
         listCreditCards(),
         listOperations(),
-        getSetting("startDate")
+        getSetting("startDate"),
+        getSetting("primaryAccountId")
       ]);
       setAccounts(accs);
       setCards(cardList);
       setOperations(ops);
       setSince(startDate ?? "");
+      setPrimaryAccountId(primary);
     } catch (err) {
       setError(errorText(err));
     } finally {
@@ -120,6 +128,25 @@ export function CreditCardsScreen() {
     setEditing(row);
     setFormError(null);
     setFormOpen(true);
+  };
+
+  const openRepay = (row: Row) => {
+    setRepaying(row);
+    setRepayError(null);
+  };
+
+  // CC-6: погашение — фактический (или плановый) перевод «свой счёт → карта».
+  // После записи автоплан пересобирается: полное погашение убирает плановый
+  // перевод, частичное — уменьшает его сумму.
+  const handleRepay = async (operation: Operation) => {
+    try {
+      await upsertOperation(operation);
+      await regenerateCardRepayments();
+      setRepaying(null);
+      await reload();
+    } catch (err) {
+      setRepayError(errorText(err));
+    }
   };
 
   const handleSave = async (account: Account, card: CreditCard) => {
@@ -200,7 +227,7 @@ export function CreditCardsScreen() {
               const used = card.creditLimit > 0 ? Math.min(1, state.debt / card.creditLimit) : 0;
               return (
                 <li key={account.id}>
-                  <button type="button" className="acc-item cc-item" onClick={() => openEdit(row)}>
+                  <div className="acc-item cc-item">
                     <span className="cc-head">
                       <span className="acc-name">{account.name}</span>
                       <span className={`cc-status cc-status--${state.status}`}>
@@ -245,7 +272,26 @@ export function CreditCardsScreen() {
                         </span>
                       </>
                     )}
-                  </button>
+
+                    <span className="cc-actions">
+                      {state.debt > 0 && (
+                        <button
+                          type="button"
+                          className="intro-submit"
+                          onClick={() => openRepay(row)}
+                        >
+                          Погасить выписку
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="intro-secondary"
+                        onClick={() => openEdit(row)}
+                      >
+                        Настройки карты
+                      </button>
+                    </span>
+                  </div>
                 </li>
               );
             })}
@@ -261,6 +307,18 @@ export function CreditCardsScreen() {
           onSave={handleSave}
           onDelete={handleDelete}
           onCancel={() => setFormOpen(false)}
+        />
+      )}
+
+      {repaying && (
+        <RepayCardDialog
+          account={repaying.account}
+          accounts={accounts}
+          state={repaying.state}
+          primaryAccountId={primaryAccountId}
+          error={repayError}
+          onSave={handleRepay}
+          onCancel={() => setRepaying(null)}
         />
       )}
     </div>
