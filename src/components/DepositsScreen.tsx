@@ -13,6 +13,7 @@ import {
   listAccounts,
   listDeposits,
   listOperations,
+  regenerateDepositInterest,
   upsertAccount,
   upsertDeposit
 } from "../lib/repository";
@@ -123,6 +124,8 @@ export function DepositsScreen() {
     try {
       await upsertAccount(account);
       await upsertDeposit(deposit);
+      // Ставка, даты и переключатель меняют ожидаемые проценты — план пересобирается.
+      await regenerateDepositInterest();
       setFormOpen(false);
       await reload();
     } catch (err) {
@@ -139,6 +142,7 @@ export function DepositsScreen() {
       }
       await deleteDeposit(accountId);
       await deleteAccount(accountId);
+      await regenerateDepositInterest();
       setFormOpen(false);
       await reload();
     } catch (err) {

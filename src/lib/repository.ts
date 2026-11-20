@@ -15,6 +15,7 @@ import {
   recurringRuleOccurrences
 } from "./finance";
 import { plannedRepayments, REPAY_ID_PREFIX } from "./credit";
+import { INTEREST_ID_PREFIX, plannedInterest } from "./deposit";
 import { newId, todayIso } from "./dates";
 import { openDatabase } from "./db";
 import { buildInsertBatches } from "./sqlBatch";
@@ -626,6 +627,66 @@ export async function regenerateCardRepayments(today = todayIso()): Promise<void
     `INSERT OR IGNORE INTO operations
        (id, date, type, status, category_id, account_id, amount, description,
         source_account_id, target_account_id, transfer_id)`,
+    rows
+  );
+}
+
+// Статья для ожидаемых процентов по вкладу (DEP-6). Заводится при первой
+// регенерации, чтобы плановому доходу было куда лечь.
+const INTEREST_CATEGORY_ID = "deposit-interest";
+
+async function ensureInterestCategory(): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    "INSERT OR IGNORE INTO categories (id, name, type, color) VALUES ($1, $2, 'income', $3)",
+    [INTEREST_CATEGORY_ID, "Проценты", "#0b7285"]
+  );
+}
+
+// DEP-6: ожидаемые проценты по вкладам как плановый доход в «Плане».
+// Пересобирается после любой правки вклада, как и автоплан погашения карт:
+// старые плановые начисления с сегодняшнего дня удаляются и ставятся заново,
+// поэтому смена ставки или выключение переключателя сразу видны в бюджете.
+export async function regenerateDepositInterest(today = todayIso()): Promise<void> {
+  const db = await openDatabase();
+  await db.execute(
+    `DELETE FROM operations WHERE id LIKE '${INTEREST_ID_PREFIX}:%' AND date >= $1`,
+    [today]
+  );
+
+  const deposits = (await listDeposits()).filter((deposit) => deposit.planInterest);
+  if (deposits.length === 0) return;
+
+  const [accounts, operations, endSetting] = await Promise.all([
+    listAccounts(),
+    listOperations(),
+    getSetting("endDate")
+  ]);
+  const horizon = endSetting && endSetting >= today ? endSetting : oneYearAfter(today);
+
+  const rows: unknown[][] = [];
+  for (const deposit of deposits) {
+    const account = accounts.find((item) => item.id === deposit.accountId);
+    if (!account) continue;
+    for (const item of plannedInterest(deposit, account.balance, operations, today, horizon)) {
+      rows.push([
+        item.id,
+        item.date,
+        "income",
+        "planned",
+        INTEREST_CATEGORY_ID,
+        item.accountId,
+        item.amount,
+        "Проценты по вкладу"
+      ]);
+    }
+  }
+  if (rows.length === 0) return;
+
+  await ensureInterestCategory();
+  await insertRows(
+    `INSERT OR IGNORE INTO operations
+       (id, date, type, status, category_id, account_id, amount, description)`,
     rows
   );
 }

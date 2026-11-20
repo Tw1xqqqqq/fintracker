@@ -191,3 +191,80 @@ export function depositForecast(
     isClosed: Boolean(closeDate && closeDate < today)
   };
 }
+
+// DEP-6: ожидаемые проценты как плановый доход.
+// Если на вкладе включён переключатель, по каждой дате выплаты ставится
+// плановый доход в статью «Проценты». Даты выплат: для капитализации
+// «в конце срока» — одна, в день закрытия; иначе — последний день каждого
+// месяца плюс день закрытия, если он не совпал с концом месяца.
+export const INTEREST_ID_PREFIX = "dep-interest";
+
+export function interestPlanId(accountId: string, date: string): string {
+  return `${INTEREST_ID_PREFIX}:${accountId}:${date}`;
+}
+
+export function isInterestPlanId(id: string): boolean {
+  return id.startsWith(`${INTEREST_ID_PREFIX}:`);
+}
+
+export interface InterestPlanItem {
+  id: string;
+  accountId: string;
+  date: string; // дата планового начисления
+  amount: number; // проценты за период с прошлой выплаты
+}
+
+function lastDayOfMonth(date: string): string {
+  const d = parse(date);
+  return iso(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)));
+}
+
+function nextMonthEnd(date: string): string {
+  return lastDayOfMonth(addDays(lastDayOfMonth(date), 1));
+}
+
+export function plannedInterest(
+  deposit: Deposit,
+  startBalance: number,
+  operations: Operation[],
+  from: string,
+  horizon: string
+): InterestPlanItem[] {
+  if (!deposit.planInterest || deposit.rate <= 0) return [];
+
+  const closeDate = deposit.closeDate;
+  const end = closeDate && closeDate < horizon ? closeDate : horizon;
+  if (end < deposit.openDate) return [];
+
+  // Свои же плановые начисления в расчёт не берём: иначе проценты начислялись
+  // бы на ещё не выплаченные проценты дважды.
+  const base = operations.filter((operation) => !isInterestPlanId(operation.id));
+
+  const dates: string[] = [];
+  if (deposit.capitalization === "end") {
+    if (closeDate && closeDate <= end) dates.push(closeDate);
+  } else {
+    for (
+      let date = lastDayOfMonth(deposit.openDate);
+      date <= end;
+      date = nextMonthEnd(date)
+    ) {
+      dates.push(date);
+    }
+    if (closeDate && closeDate <= end && !dates.includes(closeDate)) dates.push(closeDate);
+    dates.sort();
+  }
+
+  const plan: InterestPlanItem[] = [];
+  let paid = 0;
+  for (const date of dates) {
+    const total = depositInterest(deposit, startBalance, base, deposit.openDate, date, {
+      statuses: ["actual", "planned"]
+    }).accrued;
+    const amount = round(total - paid);
+    paid = round(total);
+    if (date < from || amount <= 0) continue;
+    plan.push({ id: interestPlanId(deposit.accountId, date), accountId: deposit.accountId, date, amount });
+  }
+  return plan;
+}

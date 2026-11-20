@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Deposit, Operation } from "../types";
-import { daysInYear, depositForecast, depositInterest } from "./deposit";
+import {
+  daysInYear,
+  depositForecast,
+  depositInterest,
+  interestPlanId,
+  isInterestPlanId,
+  plannedInterest
+} from "./deposit";
 
 const base: Deposit = {
   accountId: "dep",
@@ -203,5 +210,100 @@ describe("depositForecast", () => {
     const forecast = depositForecast(base, 100000, [], "2027-01-10");
     expect(forecast.isClosed).toBe(true);
     expect(forecast.accruedToDate).toBe(12000);
+  });
+});
+
+describe("plannedInterest", () => {
+  const planned: Deposit = { ...base, planInterest: true };
+
+  it("выключенный переключатель не даёт плановых начислений", () => {
+    expect(plannedInterest(base, 100000, [], "2026-01-01", "2026-06-30")).toEqual([]);
+  });
+
+  it("нулевая ставка не даёт плановых начислений", () => {
+    const zero: Deposit = { ...planned, rate: 0 };
+    expect(plannedInterest(zero, 100000, [], "2026-01-01", "2026-06-30")).toEqual([]);
+  });
+
+  it("ставит выплату в последний день каждого месяца", () => {
+    const plan = plannedInterest(planned, 100000, [], "2026-01-01", "2026-03-31");
+    expect(plan.map((item) => item.date)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
+  });
+
+  it("сумма первой выплаты равна процентам за январь", () => {
+    const plan = plannedInterest(planned, 100000, [], "2026-01-01", "2026-01-31");
+    // 31 день по 100000 × 12 % / 365
+    expect(plan[0].amount).toBe(1019.18);
+  });
+
+  it("каждая выплата — только проценты своего месяца, без накопления", () => {
+    const plan = plannedInterest(planned, 100000, [], "2026-01-01", "2026-02-28");
+    const february = depositInterest(planned, 100000, [], "2026-02-01", "2026-02-28").accrued;
+    expect(plan[1].amount).toBe(february);
+  });
+
+  it("капитализация «в конце срока» даёт одну выплату в день закрытия", () => {
+    const atEnd: Deposit = { ...planned, capitalization: "end" };
+    const plan = plannedInterest(atEnd, 100000, [], "2026-01-01", "2026-12-31");
+    expect(plan).toHaveLength(1);
+    expect(plan[0].date).toBe("2026-12-31");
+  });
+
+  it("бессрочный вклад с капитализацией «в конце срока» плана не даёт", () => {
+    const atEnd: Deposit = { ...planned, capitalization: "end", closeDate: null };
+    expect(plannedInterest(atEnd, 100000, [], "2026-01-01", "2026-12-31")).toEqual([]);
+  });
+
+  it("дата закрытия в середине месяца добавляется отдельной выплатой", () => {
+    const short: Deposit = { ...planned, closeDate: "2026-03-10" };
+    const plan = plannedInterest(short, 100000, [], "2026-01-01", "2026-12-31");
+    expect(plan.map((item) => item.date)).toEqual(["2026-01-31", "2026-02-28", "2026-03-10"]);
+  });
+
+  it("после даты закрытия выплат нет", () => {
+    const short: Deposit = { ...planned, closeDate: "2026-02-15" };
+    const plan = plannedInterest(short, 100000, [], "2026-01-01", "2026-12-31");
+    expect(plan.every((item) => item.date <= "2026-02-15")).toBe(true);
+  });
+
+  it("плановое пополнение увеличивает следующие выплаты", () => {
+    const withTopUp = plannedInterest(
+      planned,
+      100000,
+      [topUp("2026-02-01", 100000, "planned")],
+      "2026-01-01",
+      "2026-02-28"
+    );
+    const without = plannedInterest(planned, 100000, [], "2026-01-01", "2026-02-28");
+    expect(withTopUp[1].amount).toBeGreaterThan(without[1].amount);
+  });
+
+  it("выплаты раньше from в план не попадают, но суммы следующих не растут", () => {
+    const all = plannedInterest(planned, 100000, [], "2026-01-01", "2026-03-31");
+    const fromMarch = plannedInterest(planned, 100000, [], "2026-03-01", "2026-03-31");
+    expect(fromMarch).toHaveLength(1);
+    expect(fromMarch[0].amount).toBe(all[2].amount);
+  });
+
+  it("собственные плановые начисления в расчёт не берутся", () => {
+    const own: Operation = {
+      id: interestPlanId("dep", "2026-01-31"),
+      date: "2026-01-31",
+      type: "income",
+      status: "planned",
+      categoryId: "interest",
+      accountId: "dep",
+      amount: 1019.18,
+      description: "Проценты по вкладу"
+    };
+    const withOwn = plannedInterest(planned, 100000, [own], "2026-01-01", "2026-02-28");
+    const without = plannedInterest(planned, 100000, [], "2026-01-01", "2026-02-28");
+    expect(withOwn).toEqual(without);
+  });
+
+  it("идентификатор детерминированный", () => {
+    const plan = plannedInterest(planned, 100000, [], "2026-01-01", "2026-01-31");
+    expect(plan[0].id).toBe("dep-interest:dep:2026-01-31");
+    expect(isInterestPlanId(plan[0].id)).toBe(true);
   });
 });
