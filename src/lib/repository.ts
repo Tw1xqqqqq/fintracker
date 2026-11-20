@@ -507,10 +507,16 @@ function oneYearAfter(iso: string): string {
 // вхождения (rec:…, с сегодняшнего дня): прошлые остаются как были, а
 // отредактированные (rec-edit:…) и удалённые вручную вхождения — в
 // recurring_exceptions, их перегенерация не трогает.
+// CORE-4: горизонт планирования — это конец финансового года (fyEnd).
+// Старые базы, где год ещё не выбирали, читаем из endDate.
+async function planHorizonSetting(): Promise<string | null> {
+  return (await getSetting("fyEnd")) ?? (await getSetting("endDate"));
+}
+
 export async function regenerateRecurringOperations(today = todayIso()): Promise<void> {
   const db = await openDatabase();
   const rules = await listRecurringRules();
-  const horizonSetting = await getSetting("endDate");
+  const horizonSetting = await planHorizonSetting();
 
   const exceptionRows = await db.select<{ rule_id: string; date: string }[]>(
     "SELECT rule_id, date FROM recurring_exceptions"
@@ -584,7 +590,7 @@ export async function regenerateCardRepayments(today = todayIso()): Promise<void
     listAccounts(),
     listOperations(),
     getSetting("startDate"),
-    getSetting("endDate"),
+    planHorizonSetting(),
     getSetting("primaryAccountId")
   ]);
 
@@ -660,7 +666,7 @@ export async function regenerateDepositInterest(today = todayIso()): Promise<voi
   const [accounts, operations, endSetting] = await Promise.all([
     listAccounts(),
     listOperations(),
-    getSetting("endDate")
+    planHorizonSetting()
   ]);
   const horizon = endSetting && endSetting >= today ? endSetting : oneYearAfter(today);
 

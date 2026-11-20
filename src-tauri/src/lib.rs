@@ -234,6 +234,20 @@ fn migrations() -> Vec<Migration> {
             );
         ",
         kind: MigrationKind::Up,
+    },
+    // CORE-4 (BUG-2): «финансовый год» и «начало учёта» жили в одной настройке
+    // startDate, и выбор следующего года сбивал дату начала учёта. Год
+    // переезжает в fyStart/fyEnd, startDate остаётся началом учёта.
+    Migration {
+        version: 13,
+        description: "split_financial_year_from_start_date",
+        sql: "
+            INSERT OR IGNORE INTO settings (key, value)
+                SELECT 'fyStart', value FROM settings WHERE key = 'startDate';
+            INSERT OR IGNORE INTO settings (key, value)
+                SELECT 'fyEnd', value FROM settings WHERE key = 'endDate';
+        ",
+        kind: MigrationKind::Up,
     }]
 }
 

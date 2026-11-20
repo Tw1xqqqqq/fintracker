@@ -20,8 +20,11 @@ export function Plan() {
     setLoading(true);
     setError(null);
     try {
-      const start = (await getSetting("startDate")) ?? "";
-      const end = (await getSetting("endDate")) ?? (start ? `${start.slice(0, 4)}-12-31` : "");
+      // CORE-4: год живёт в fyStart/fyEnd. startDate — это начало учёта, его
+      // менять нельзя; он нужен только как запасной вариант для баз, где год
+      // ещё ни разу не выбирали.
+      const start = (await getSetting("fyStart")) ?? (await getSetting("startDate")) ?? "";
+      const end = (await getSetting("fyEnd")) ?? (start ? `${start.slice(0, 4)}-12-31` : "");
       setStartDate(start);
       setEndDate(end);
     } catch (err) {
@@ -53,8 +56,8 @@ export function Plan() {
     setSaving(true);
     setError(null);
     try {
-      await setSetting("startDate", startDate);
-      await setSetting("endDate", endDate);
+      await setSetting("fyStart", startDate);
+      await setSetting("fyEnd", endDate);
       // горизонт изменился — пересобрать регулярные операции под новый диапазон
       await regenerateRecurringOperations();
       setSaved(true);

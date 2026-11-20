@@ -25,10 +25,12 @@ import {
 import {
   accountsInGroup,
   initialGroupBalance,
+  liquidBalanceAt,
   liquidBalanceSeries,
   liquidWeekFlows,
   transferFlows
 } from "../lib/accounts";
+import { addDaysIso } from "../lib/credit";
 import {
   categoryUsage,
   deleteCategory,
@@ -170,7 +172,15 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
       );
       // Цепочка «Итогового баланса» идёт от свободных денег: долг по кредиткам
       // и деньги на вкладах в неё не входят.
-      setInitialBalance(initialGroupBalance(accounts, "liquid"));
+      // CORE-4: стартовый остаток года — свободные деньги на день перед первой
+      // неделей. Иначе при переходе на следующий год первая неделя начиналась
+      // бы со стартовых балансов счетов, а факт прошлого года терялся.
+      const firstWeek = weeks[0];
+      setInitialBalance(
+        firstWeek
+          ? liquidBalanceAt(accounts, ops, addDaysIso(firstWeek.start, -1))
+          : initialGroupBalance(accounts, "liquid")
+      );
       setCategories([...cats].sort((a, b) => a.name.localeCompare(b.name)));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

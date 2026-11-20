@@ -141,8 +141,9 @@ export function OperationsJournal() {
         listOperations(),
         listAccounts(),
         listCategories(),
-        getSetting("startDate"),
-        getSetting("endDate")
+        // CORE-4: недели строятся по финансовому году, не по началу учёта.
+        getSetting("fyStart"),
+        getSetting("fyEnd")
       ]);
       setOperations(ops);
       setAccounts(accs);
