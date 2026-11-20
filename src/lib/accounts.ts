@@ -263,3 +263,12 @@ export function transferFlows(
   flows.repayByCard.forEach((value, key) => flows.repayByCard.set(key, round(value)));
   return flows;
 }
+
+// QA-6: относится ли операция к счёту. Для перевода это обе ноги — иначе
+// фильтр по кредитке или вкладу не показывает приходы: погашения и
+// пополнения, у которых нога списания принадлежит другому счёту.
+export function operationTouchesAccount(operation: Operation, accountId: string): boolean {
+  if (operation.accountId === accountId) return true;
+  if (operation.type !== "transfer") return false;
+  return operation.sourceAccountId === accountId || operation.targetAccountId === accountId;
+}

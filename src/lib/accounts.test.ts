@@ -9,6 +9,7 @@ import {
   liquidBalanceAt,
   liquidBalanceSeries,
   liquidWeekFlows,
+  operationTouchesAccount,
   transferFlows
 } from "./accounts";
 
@@ -283,5 +284,33 @@ describe("liquidBalanceSeries", () => {
     const operations = transfer("main", "dep", 70000, "2026-11-03");
     const series = liquidBalanceSeries(60000, liquidWeekFlows(accounts, operations, weeks));
     expect(series.effective[0]).toBe(-10000);
+  });
+});
+
+describe("operationTouchesAccount", () => {
+  it("обычный расход относится к своему счёту", () => {
+    const expense = op({ accountId: "main", amount: 1000 });
+    expect(operationTouchesAccount(expense, "main")).toBe(true);
+    expect(operationTouchesAccount(expense, "cash")).toBe(false);
+  });
+
+  it("перевод относится к обоим счетам, с какой бы ноги ни смотрели", () => {
+    const [out, incoming] = transfer("main", "cc", 12500, "2026-01-10");
+    for (const leg of [out, incoming]) {
+      expect(operationTouchesAccount(leg, "main")).toBe(true);
+      expect(operationTouchesAccount(leg, "cc")).toBe(true);
+      expect(operationTouchesAccount(leg, "dep")).toBe(false);
+    }
+  });
+
+  it("погашение кредитки видно по фильтру самой карты", () => {
+    const [out] = transfer("main", "cc", 12500, "2026-01-10");
+    // в журнале остаётся только нога списания — она всё равно должна найтись
+    expect(operationTouchesAccount(out, "cc")).toBe(true);
+  });
+
+  it("пополнение вклада видно по фильтру вклада", () => {
+    const [out] = transfer("main", "dep", 10000, "2026-01-10");
+    expect(operationTouchesAccount(out, "dep")).toBe(true);
   });
 });

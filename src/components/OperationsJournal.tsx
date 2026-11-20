@@ -35,6 +35,7 @@ import {
   parseRecurringOccurrenceId,
   pendingRecurringOperations
 } from "../lib/finance";
+import { operationTouchesAccount } from "../lib/accounts";
 import {
   deleteOperation,
   getSetting,
@@ -221,7 +222,8 @@ export function OperationsJournal() {
       if (range.to && op.date > range.to) return false;
       if (typeFilter !== "all" && op.type !== typeFilter) return false;
       if (statusFilter !== "all" && op.status !== statusFilter) return false;
-      if (accountFilter !== "all" && op.accountId !== accountFilter) return false;
+      // QA-6: по счёту ищем обе ноги перевода, иначе приходы не видны.
+      if (accountFilter !== "all" && !operationTouchesAccount(op, accountFilter)) return false;
       if (categoryFilter !== "all" && op.categoryId !== categoryFilter) return false;
       if (query) {
         const category = op.categoryId ? categoryMap.get(op.categoryId)?.name ?? "" : "Перевод";
