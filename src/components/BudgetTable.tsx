@@ -41,6 +41,7 @@ import {
   listOperations,
   listRecurringRules,
   regenerateCardRepayments,
+  regenerateDepositInterest,
   regenerateRecurringOperations,
   updateRecurringOccurrence,
   upsertCategory,
@@ -189,8 +190,18 @@ export function BudgetTable({ weeks, onEditYear }: BudgetTableProps) {
     }
   }
 
+  // DEP-6: плановые проценты материализуются при открытии бюджета. Без этого
+  // строка «Проценты» появлялась бы только после пересохранения вклада на
+  // экране «Депозиты», то есть для уже заведённых вкладов — никогда.
   useEffect(() => {
-    void load();
+    void (async () => {
+      try {
+        await regenerateDepositInterest();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+      await load();
+    })();
   }, []);
 
   const incomeCats = useMemo(() => categories.filter((c) => c.type === "income"), [categories]);
