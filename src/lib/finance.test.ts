@@ -611,6 +611,15 @@ describe("вхождения регулярных правил", () => {
     expect(parseRecurringOccurrenceId(editedOccurrenceId(occurrence))).toEqual(occurrence);
   });
 
+  // BUG-13: перегенерация сносит будущие вхождения запросом DELETE ... id LIKE 'rec:%'.
+  // Отредактированное вхождение переживает её только потому, что его id начинается
+  // с другого префикса. Смена префикса на "rec:" молча теряла бы правку пользователя.
+  it("id отредактированного вхождения не попадает под удаление при перегенерации", () => {
+    const id = editedOccurrenceId({ ruleId: "9f2e-ab", date: "2026-11-07" });
+    expect(id.startsWith("rec:")).toBe(false);
+    expect(id).toBe("rec-edit:9f2e-ab:2026-11-07");
+  });
+
   it("не путает с подтверждённым фактом и обычными операциями", () => {
     expect(parseRecurringOccurrenceId("confirm:rec:9f2e-ab:2026-11-07")).toBeNull();
     expect(parseRecurringOccurrenceId("manual-plan:2026-11-02:food")).toBeNull();
